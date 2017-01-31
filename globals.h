@@ -32,10 +32,10 @@ static struct sdastruct far *glob_sdaptr; /* pointer to DOS SDA (set by main() a
 
 static unsigned short glob_pspseg; /* segment of the program's PSP block */
 
-static void (__interrupt __far *glob_prev_2f_handler)(); /* previous INT 2F handler
-                                                          * (so I can call it for
-                                                          * all queries that do not
-                                                          * relate to my drive) */
+static unsigned short glob_prev_2f_handler_seg; /* seg:off of the previous   */
+static unsigned short glob_prev_2f_handler_off; /* 2F handler (so I can call */
+                                                /* it for all queries that   */
+                                                /* do not relate to my drive */
 
 /* address of the internal stack that will be used by the TSR, as well as the
  * stack memory block itself */

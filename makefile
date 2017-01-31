@@ -7,8 +7,11 @@
 
 all: etherdfs.exe
 
-etherdfs.exe: etherdfs.c dosstruc.h globals.h
-	wcl -y -0 -s -d0 -lr -ms -we -wx -k2048 -fm=etherdfs.map -os etherdfs.c
+chint.obj: chint086.asm
+	wasm -0 chint086.asm -fo=chint.obj -ms
+
+etherdfs.exe: etherdfs.c chint.obj dosstruc.h globals.h
+	wcl -y -0 -s -d0 -lr -ms -we -wx -k2048 -fm=etherdfs.map -os chint.obj etherdfs.c -fe=etherdfs.exe
 
 # -y      ignore the WCL env. variable, if any
 # -0      generate code for 8086
@@ -21,6 +24,7 @@ etherdfs.exe: etherdfs.c dosstruc.h globals.h
 # -k2048  set stack size to 2048 bytes (for the non-resident part)
 # -fm=    generate a map file
 # -os     optimize for size
+# -fe     set output file name
 
 clean: .symbolic
 	if exist etherdfs.exe del etherdfs.exe

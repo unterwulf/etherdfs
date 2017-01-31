@@ -23,12 +23,11 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#include <dos.h> /* chain_int(), INTPACK */
-/*#include <i86.h>*/ /* INTPACK */
-
+#include <i86.h> /* union INTPACK */
+#include "chint.h" /* _mvchain_intr() */
 
 /* program version and date */
-#define PVER "0.5"
+#define PVER "0.6"
 #define PDATE "2017"
 
 /* protocol version */
@@ -51,6 +50,7 @@
 
 /* all the resident code goes to segment 'BEGTEXT' */
 #pragma code_seg(BEGTEXT, CODE)
+
 
 /* copies l bytes from *s to *d */
 static void copybytes(void far *d, void far *s, unsigned int l) {
@@ -894,7 +894,7 @@ void __interrupt __far inthandler(union INTPACK r) {
 
   /* hand control to the previous INT 2F handler */
   CHAINTOPREVHANDLER:
-  _chain_intr(glob_prev_2f_handler);
+  _mvchain_intr(MK_FP(glob_prev_2f_handler_seg, glob_prev_2f_handler_off));
 }
 
 
@@ -1099,7 +1099,7 @@ static void help(void) {
 static int tsrpresent(void) {
   int x;
   char *sig = "MVethdrv";
-  unsigned char far *ptr = (unsigned char far *)glob_prev_2f_handler + 23; /* the interrupt handler's signature appears at offset 23 (this might change at each source code modification) */
+  unsigned char far *ptr = (unsigned char far *)MK_FP(glob_prev_2f_handler_seg, glob_prev_2f_handler_off) + 23; /* the interrupt handler's signature appears at offset 23 (this might change at each source code modification) */
 
   /* { unsigned short far *VGA = (unsigned short far *)(0xB8000000l);
   for (x = 0; x < 512; x++) VGA[240 + ((x >> 6) * 80) + (x & 63)] = 0x1f00 | ptr[x]; } */
@@ -1262,19 +1262,15 @@ int main(int argc, char **argv) {
   }
 
   /* remember current int 2f handler, we might over-write it soon */
-  {
-  unsigned short rseg = 0, roff = 0;
   _asm {
     mov ax, 352fh; /* AH=GetVect AL=2F */
     push es /* save ES and BX (will be overwritten) */
     push bx
     int 21h
-    mov rseg, es
-    mov roff, bx
+    mov glob_prev_2f_handler_seg, es
+    mov glob_prev_2f_handler_off, bx
     pop bx
     pop es
-  }
-  glob_prev_2f_handler = MK_FP(rseg, roff);
   }
 
   /* is the TSR installed already? */
