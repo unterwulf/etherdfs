@@ -10,6 +10,11 @@
 #ifndef GLOBALS_SENTINEL
 #define GLOBALS_SENTINEL
 
+/* required size (in bytes) of the data segment - this must be bigh enough as
+ * to accomodate all "DATA" segments AND the stack, which will be located at
+ * the very end of the data segment */
+#define DATASEGSZ 4800
+
 /* a few globals useful only for debug messages */
 #if DEBUGLEVEL > 0
 static unsigned short dbg_xpos = 0;
@@ -17,6 +22,12 @@ static unsigned short far *dbg_VGA = (unsigned short far *)(0xB8000000l);
 static unsigned char dbg_hexc[16] = "0123456789ABCDEF";
 #define dbg_startoffset 80*16
 #endif
+
+/* address of the internal stack that will be used by the TSR, as well as
+ * the stack memory block itself */
+/*unsigned char glob_tsrstack[1024];
+unsigned short glob_tsrstack_seg;
+unsigned short glob_tsrstack_off;*/
 
 static unsigned char glob_ldrv;    /* local drive letter (0=A:, 1=B:, etc) */
 static unsigned char glob_rdrv;    /* remote drive (0=A:, 1=B:, etc) */
@@ -37,11 +48,6 @@ static unsigned short glob_prev_2f_handler_off; /* 2F handler (so I can call */
                                                 /* it for all queries that   */
                                                 /* do not relate to my drive */
 
-/* address of the internal stack that will be used by the TSR, as well as the
- * stack memory block itself */
-static unsigned char glob_tsrstack[1024];
-static unsigned short glob_tsrstack_seg;
-static unsigned short glob_tsrstack_off;
 /* seg:off addresses of the old (DOS) stack */
 static unsigned short glob_oldstack_seg;
 static unsigned short glob_oldstack_off;

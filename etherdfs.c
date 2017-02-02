@@ -87,6 +87,15 @@ static int len_if_no_wildcards(char far *s) {
  * have to be hand-tuned (this has been lurked from mTCP). */
 void __interrupt __far pktdrv_recv(union INTPACK r) {
   /* DEBUG("pktdrv_recv() called with AX=%u / CX=%u\n", r.w.ax, r.w.cx); */
+  _asm {
+    jmp skip
+    SIG db 'p','k','t','r','c','v'
+    skip:
+    push ax
+    mov ax, 0
+    mov ds, ax
+    pop ax
+  }
 
   if (r.w.ax == 0) { /* first call: the packet driver needs a buffer */
     /* DEBUG("pktdrv requests %d bytes for incoming frame\n", r.w.cx); */
@@ -126,7 +135,7 @@ void __interrupt __far pktdrv_recv(union INTPACK r) {
     pop cx
     pop ax
     retf
-  };
+  }
 }
 
 
@@ -808,6 +817,10 @@ void __interrupt __far inthandler(union INTPACK r) {
     jmp SKIPTSRSIG
     TSRSIG DB 'M','V','e','t','h','d','r','v'
     SKIPTSRSIG:
+    push ax
+    mov ax, 0
+    mov ds, ax
+    pop ax
   }
 
   /* DEBUG output (BLUE) */
@@ -875,8 +888,13 @@ void __interrupt __far inthandler(union INTPACK r) {
     cli /* make sure to disable interrupts, so nobody gets in the way while I'm fiddling with the stack */
     mov glob_oldstack_seg, SS
     mov glob_oldstack_off, SP
-    mov SS, glob_tsrstack_seg
-    mov SP, glob_tsrstack_off
+    /* set SS to DS */
+    mov ax, ds
+    mov ss, ax
+    /* set SP to the end of my DATASEGSZ (-2) */
+    mov sp, DATASEGSZ
+    dec sp
+    dec sp
     sti
   }
   /* call the actual INT 2F processing function */
@@ -901,6 +919,11 @@ void __interrupt __far inthandler(union INTPACK r) {
 /*********************** HERE ENDS THE RESIDENT PART ***********************/
 
 #pragma code_seg("_TEXT", "CODE");
+
+/* this function is obviously useless - but I do need it because it is a
+ * 'low-water' mark for the end of my resident code */
+void begtextend(void) {
+}
 
 /* registers a packet driver handle to use on subsequent calls */
 static int pktdrv_accesstype(void) {
@@ -1070,7 +1093,7 @@ static struct cdsstruct far *getcds(unsigned int drive) {
 static void outmsg(char *s) {
   _asm {
     mov ah, 9h  /* DOS 1+ - WRITE STRING TO STANDARD OUTPUT */
-    mov dx, s   /* I don't set DS (small memory model, s is an offset) */
+    mov dx, s   /* small memory model: no need to set DS, 's' is an offset */
     int 21h
   }
 }
@@ -1101,8 +1124,8 @@ static int tsrpresent(void) {
   char *sig = "MVethdrv";
   unsigned char far *ptr = (unsigned char far *)MK_FP(glob_prev_2f_handler_seg, glob_prev_2f_handler_off) + 23; /* the interrupt handler's signature appears at offset 23 (this might change at each source code modification) */
 
-  /* { unsigned short far *VGA = (unsigned short far *)(0xB8000000l);
-  for (x = 0; x < 512; x++) VGA[240 + ((x >> 6) * 80) + (x & 63)] = 0x1f00 | ptr[x]; } */
+  /*{ unsigned short far *VGA = (unsigned short far *)(0xB8000000l);
+  for (x = 0; x < 512; x++) VGA[240 + ((x >> 6) * 80) + (x & 63)] = 0x1f00 | ptr[x]; }*/
 
   for (x = 0; x < 8; x++) if (sig[x] != ptr[x]) return(0);
   return(1);
@@ -1232,10 +1255,79 @@ static void byte2hex(char *s, unsigned char b) {
   s[3] = 0;
 }
 
+/* allocates sz bytes of memory and returns the segment to allocated memory or
+ * 0 on error */
+static unsigned short allocseg(unsigned short sz) {
+  unsigned short volatile res = 0;
+  /* sz should contains number of 16-byte paragraphs instead of bytes */
+  sz += 15; /* make sure to allocate enough paragraphs */
+  sz >>= 4;
+  /* ask DOS for memory */
+  _asm {
+    mov ah, 48h     /* alloc memory (DOS 2+) */
+    mov bx, sz      /* number of paragraphs to allocate */
+    mov res, 0      /* pre-set res to failure (0) */
+    int 21h         /* returns allocated segment in AX */
+    /* check CF */
+    jc failed
+    mov res, ax     /* set res to actual result */
+    failed:
+  }
+  return(res);
+}
+
+/* free segment previously allocated through allocseg() */
+static void freeseg(unsigned short segm) {
+  _asm {
+    mov ah, 49h   /* free memory (DOS 2+) */
+    mov es, segm  /* put segment to free into ES */
+    int 21h
+  }
+}
+
+/* patch the TSR routine and packet driver handler so they use my new DS.
+ * return 0 on success, non-zero otherwise */
+static int updatetsrds(void) {
+  unsigned short newds;
+  unsigned char far *ptr;
+  unsigned short far *sptr;
+  newds = 0;
+  _asm {
+    push ds
+    pop newds
+  }
+
+  /* first patch the TSR routine */
+  ptr = (unsigned char far *)inthandler + 23; /* the interrupt handler's signature appears at offset 23 (this might change at each source code modification and/or optimization settings) */
+  sptr = (unsigned short far *)ptr;
+  /* check for the routine's signature first */
+  if ((ptr[0] != 'M') || (ptr[1] != 'V') || (ptr[2] != 'e') || (ptr[3] != 't')) return(-1);
+  sptr[5] = newds;
+  /*{
+    int x;
+    unsigned short far *VGA = (unsigned short far *)(0xB8000000l);
+    for (x = 0; x < 128; x++) VGA[80*12 + ((x >> 6) * 80) + (x & 63)] = 0x1f00 | ptr[x];
+  }*/
+  /* now patch the pktdrv_recv() routine */
+  ptr = (unsigned char far *)pktdrv_recv + 23;
+  sptr = (unsigned short far *)ptr;
+  /* check for the routine's signature first */
+  if ((ptr[0] != 'p') || (ptr[1] != 'k') || (ptr[2] != 't') || (ptr[3] != 'r')) return(-1);
+  sptr[4] = newds;
+  /*{
+    int x;
+    unsigned short far *VGA = (unsigned short far *)(0xB8000000l);
+    for (x = 0; x < 128; x++) VGA[80*20 + ((x >> 6) * 80) + (x & 63)] = 0x1f00 | ptr[x];
+  }*/
+  return(0);
+}
+
+
 int main(int argc, char **argv) {
   struct argstruct args;
   struct cdsstruct far *cds;
   unsigned char dosver = 0;
+  unsigned short volatile newdataseg; /* 'volatile' just in case the compiler would try to optimize it out, since I set it through in-line assembly */
 
   /* parse command-line arguments */
   zerobytes(&args, sizeof(args));
@@ -1279,9 +1371,6 @@ int main(int argc, char **argv) {
     return(1);
   }
 
-  /* remember the SDA address (will be useful later) */
-  glob_sdaptr = getsda();
-
   /* enable the new drive */
   cds = getcds(glob_ldrv);
   if (cds == NULL) {
@@ -1298,10 +1387,53 @@ int main(int argc, char **argv) {
     return(1);
   }
 
-  /* set up the seg:off locations of the internal TSR stack */
-  glob_tsrstack_seg = FP_SEG(glob_tsrstack);
-  glob_tsrstack_off = FP_OFF(glob_tsrstack);
-  glob_tsrstack_off += (sizeof(glob_tsrstack) - 2); /* stack grows downard */
+  /* allocate a new segment for all my internal needs, and use it right away
+   * as DS */
+  newdataseg = allocseg(DATASEGSZ);
+  if (newdataseg == 0) {
+    outmsg("Memory alloc error!\r\n$");
+    return(1);
+  }
+  /* copy current DS into the new segment and switch to new DS/SS */
+  _asm {
+    /* save registers on the stack */
+    push es
+    push cx
+    push si
+    push di
+    pushf
+    /* copy the memory block */
+    mov cx, DATASEGSZ  /* copy cx bytes */
+    xor si, si         /* si = 0*/
+    xor di, di         /* di = 0 */
+    cld                /* clear direction flag (increment si/di) */
+    mov es, newdataseg /* load es with newdataseg */
+    rep movsb          /* execute copy DS:SI -> ES:DI */
+    /* restore registers (but NOT es, instead save it into AX for now) */
+    popf
+    pop di
+    pop si
+    pop cx
+    pop ax
+    /* switch to the new DS _AND_ SS now */
+    push es
+    push es
+    pop ds
+    pop ss
+    /* restore ES */
+    push ax
+    pop es
+  }
+
+  /* patch the TSR and pktdrv_recv() so they use my new DS */
+  if (updatetsrds() != 0) {
+    outmsg("DS/SS relocation failed.\r\n$");
+    freeseg(newdataseg);
+    return(1);
+  }
+
+  /* remember the SDA address (will be useful later) */
+  glob_sdaptr = getsda();
 
   /* init the packet driver interface */
   glob_pktdrv_pktint = 0;
@@ -1316,6 +1448,7 @@ int main(int argc, char **argv) {
   /* has it succeeded? */
   if (glob_pktdrv_pktint == 0) {
     outmsg("Packet driver initialization failed.\r\n$");
+    freeseg(newdataseg);
     return(1);
   }
   pktdrv_getaddr(glob_lmac);
@@ -1330,27 +1463,13 @@ int main(int argc, char **argv) {
     if (sendquery(AL_DISKSPACE, glob_ldrv, 0, &answer, &ax, 1) != 6) {
       outmsg("No etherdfs server found on the LAN (not for requested drive at least).\r\n$");
       pktdrv_free(); /* free the pkt drv and quit */
+      freeseg(newdataseg);
       return(1);
     }
   }
 
   /* set the drive as being a 'network' disk */
   cds->flags = CDSFLAG_NET;
-
-  /* set up the TSR (INT 2F catching) */
-  _asm {
-    cli
-    mov ax, 252fh /* AH=set interrupt vector  AL=2F */
-    push ds /* preserve DS and DX */
-    push dx
-    push cs /* set DS to current CS, that is provide the */
-    pop ds  /* int handler's segment */
-    mov dx, offset inthandler /* int handler's offset */
-    int 21h
-    pop dx /* restore DS and DX to previous values */
-    pop ds
-    sti
-  }
 
   if ((args.flags & ARGFL_QUIET) == 0) {
     char buff[20];
@@ -1399,12 +1518,38 @@ int main(int argc, char **argv) {
     int 21h
   }
 
-  /* TODO: I could free much more memory, but first I need to relocate DATA
-   *       somewhere safe */
-  /* turn self into a TSR and free memory I won't need any more */
+  /* set up the TSR (INT 2F catching) */
   _asm {
-    mov ax, 3100h  /* AH=31 'terminate and stay resident', AL=00 exit code */
-    mov dx, 992    /* number of paragraphs to keep resident */
+    cli
+    mov ax, 252fh /* AH=set interrupt vector  AL=2F */
+    push ds /* preserve DS and DX */
+    push dx
+    push cs /* set DS to current CS, that is provide the */
+    pop ds  /* int handler's segment */
+    mov dx, offset inthandler /* int handler's offset */
+    int 21h
+    pop dx /* restore DS and DX to previous values */
+    pop ds
+    sti
+  }
+
+  /* Turn self into a TSR and free memory I won't need any more. That is, I
+   * free all the libc startup code and my init functions by passing the
+   * number of paragraphs to keep resident to INT 21h, AH=31h. How to compute
+   * the number of paragraphs? Simple: look at the memory map and note down
+   * the size of the BEGTEXT segment (that's where I store all TSR routines).
+   * then: (sizeof(BEGTEXT) + sizeof(PSP) + 15) / 16
+   * PSP is 256 bytes of course. And +15 is needed to avoid truncating the
+   * last (partially used) paragraph. */
+  _asm {
+    mov ax, 3100h  /* AH=31 'terminate+stay resident', AL=0 exit code */
+    mov dx, offset begtextend /* DX = offset of resident code end     */
+    add dx, 256    /* add size of PSP (256 bytes)                     */
+    add dx, 15     /* add 15 to avoid truncating last paragraph       */
+    shr dx, 1      /* convert bytes to number of 16-bytes paragraphs  */
+    shr dx, 1      /* the 8086/8088 CPU supports only a 1-bit version */
+    shr dx, 1      /* of SHR, so I have to repeat it as many times as */
+    shr dx, 1      /* many bits I need to shift.                      */
     int 21h
   }
 

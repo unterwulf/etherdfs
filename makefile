@@ -1,5 +1,5 @@
 #
-# Makefile for etherdfs, requires Open Watcom
+# Makefile for etherdfs, requires Open Watcom v1.9
 # Copyright (C) 2017 Mateusz Viste
 #
 # http://etherdfs.sourceforge.net
@@ -11,7 +11,7 @@ chint.obj: chint086.asm
 	wasm -0 chint086.asm -fo=chint.obj -ms
 
 etherdfs.exe: etherdfs.c chint.obj dosstruc.h globals.h
-	wcl -y -0 -s -d0 -lr -ms -we -wx -k2048 -fm=etherdfs.map -os chint.obj etherdfs.c -fe=etherdfs.exe
+	wcl -y -0 -s -d0 -lr -ms -we -wx -k1024 -fm=etherdfs.map -os chint.obj etherdfs.c -fe=etherdfs.exe
 
 # -y      ignore the WCL env. variable, if any
 # -0      generate code for 8086
@@ -31,6 +31,6 @@ clean: .symbolic
 
 pkg: .symbolic etherdfs.exe
 	if exist etherdfs.zip del etherdfs.zip
-	zip -9 -k etherdfs.zip etherdfs.exe etherdfs.txt
+	zip -9 -k etherdfs.zip etherdfs.exe etherdfs.txt history.txt
 	if exist ethersrc.zip del ethersrc.zip
 	zip -9 -k ethersrc.zip *.h *.c *.txt makefile
