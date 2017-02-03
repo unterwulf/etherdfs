@@ -23,15 +23,9 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#include <i86.h> /* union INTPACK */
-#include "chint.h" /* _mvchain_intr() */
-
-/* program version and date */
-#define PVER "0.6"
-#define PDATE "2017"
-
-/* protocol version */
-#define PROTOVER 0
+#include <i86.h>     /* union INTPACK */
+#include "chint.h"   /* _mvchain_intr() */
+#include "version.h" /* program & protocol version */
 
 /* set DEBUGLEVEL to 0, 1 or 2 to turn on debug mode with desired verbosity */
 #define DEBUGLEVEL 0
@@ -815,7 +809,7 @@ void __interrupt __far inthandler(union INTPACK r) {
    * this will also contain the DS segment to use and actually set it */
   _asm {
     jmp SKIPTSRSIG
-    TSRSIG DB 'M','V','e','t','h','d','r','v'
+    TSRSIG DB 'M','V','e','t','h','d'
     SKIPTSRSIG:
     push ax
     mov ax, 0
@@ -983,7 +977,18 @@ static int pktdrv_init(unsigned short pktintparam) {
   unsigned short rseg = 0, roff = 0;
   char far *pktdrvfunc = (char far *)MK_FP(pktdrvfuncseg, pktdrvfuncoffs);
   int i;
-  char sig[8] = "PKT DRVR";
+  char sig[8];
+  /* preload sig with "PKT DRVR" -- I could it just as well with
+   * char sig[] = "PKT DRVR", but I want to avoid this landing in
+   * my DATA segment so it doesn't pollute the TSR memory space. */
+  sig[0] = 'P';
+  sig[1] = 'K';
+  sig[2] = 'T';
+  sig[3] = ' ';
+  sig[4] = 'D';
+  sig[5] = 'R';
+  sig[6] = 'V';
+  sig[7] = 'R';
 
   pktdrvfunc += 3; /* skip three bytes of executable code */
   for (i = 0; i < 8; i++) if (sig[i] != pktdrvfunc[i]) return(-1);
@@ -1098,21 +1103,6 @@ static void outmsg(char *s) {
   }
 }
 
-static void help(void) {
-  outmsg("EtherDFS v" PVER " / Copyright (C) " PDATE " Mateusz Viste\r\n$");
-  outmsg("A network drive for DOS running over raw ethernet\r\n\r\n$");
-
-  outmsg("Usage: etherdfs SRVMAC rdrive-ldrive [options]\r\n\r\n$");
-
-  outmsg("Options:\r\n$");
-  outmsg("  /p=XX   use packet driver at interrupt XX (autodetect otherwise)\r\n$");
-  outmsg("  /q      quiet mode (print nothing if loaded successfully)\r\n$");
-  outmsg("\r\n$");
-  outmsg("Use '::' as SRVMAC for server auto-discovery.\r\n\r\n$");
-
-  outmsg("Examples:  etherdfs 6d:4f:4a:4d:49:52 C-F /q\r\n$");
-  outmsg("           etherdfs :: D-X /p=6F\r\n$");
-}
 
 /* returns 0 if ethdrive is not found in memory, non-zero otherwise
    NOTE: checking for self won't work if another TSR chained int 2F ! I should
@@ -1120,14 +1110,14 @@ static void help(void) {
          On the other hand, packet driver access will be refused the second
          time anyway, so detecting self is a purely cosmetic issue. */
 static int tsrpresent(void) {
-  int x;
-  char *sig = "MVethdrv";
   unsigned char far *ptr = (unsigned char far *)MK_FP(glob_prev_2f_handler_seg, glob_prev_2f_handler_off) + 23; /* the interrupt handler's signature appears at offset 23 (this might change at each source code modification) */
 
   /*{ unsigned short far *VGA = (unsigned short far *)(0xB8000000l);
   for (x = 0; x < 512; x++) VGA[240 + ((x >> 6) * 80) + (x & 63)] = 0x1f00 | ptr[x]; }*/
 
-  for (x = 0; x < 8; x++) if (sig[x] != ptr[x]) return(0);
+  /* look for the "MVethd" signature */
+  if ((ptr[0] != 'M') || (ptr[1] != 'V') || (ptr[2] != 'e') || (ptr[3] != 't')
+   || (ptr[4] != 'h') || (ptr[5] != 'd')) return(0);
   return(1);
 }
 
@@ -1248,11 +1238,21 @@ static int parseargv(struct argstruct *args) {
   return(0);
 }
 
+/* translates an unsigned byte into a 2-characters string containing its hex
+ * representation. s needs to be at least 3 bytes long. */
 static void byte2hex(char *s, unsigned char b) {
-  char h[16] = "0123456789ABCDEF";
+  char h[16];
+  unsigned short i;
+  /* pre-compute h[] with a string 0..F -- I could do the same thing easily
+   * with h[] = "0123456789ABCDEF", but then this would land inside the DATA
+   * segment, while I want to keep it in stack to avoid polluting the TSR's
+   * memory space */
+  for (i = 0; i < 10; i++) h[i] = '0' + i;
+  for (; i < 16; i++) h[i] = ('A' - 10) + i;
+  /* */
   s[0] = h[b >> 4];
   s[1] = h[b & 15];
-  s[3] = 0;
+  s[2] = 0;
 }
 
 /* allocates sz bytes of memory and returns the segment to allocated memory or
@@ -1302,7 +1302,7 @@ static int updatetsrds(void) {
   sptr = (unsigned short far *)ptr;
   /* check for the routine's signature first */
   if ((ptr[0] != 'M') || (ptr[1] != 'V') || (ptr[2] != 'e') || (ptr[3] != 't')) return(-1);
-  sptr[5] = newds;
+  sptr[4] = newds;
   /*{
     int x;
     unsigned short far *VGA = (unsigned short far *)(0xB8000000l);
@@ -1334,7 +1334,7 @@ int main(int argc, char **argv) {
   args.argc = argc;
   args.argv = argv;
   if (parseargv(&args) != 0) {
-    help();
+    #include "msg/help.c"
     return(1);
   }
 
@@ -1349,11 +1349,12 @@ int main(int argc, char **argv) {
     done:
   }
   if (dosver < 5) {
-    outmsg("Unsupported DOS version! etherdfs requires MS-DOS 5+.\r\n$");
+    #include "msg\\unsupdos.c"
     return(1);
   }
 
-  /* remember current int 2f handler, we might over-write it soon */
+  /* remember current int 2f handler, we might over-write it soon (also I
+   * use it to see if I'm already loaded) */
   _asm {
     mov ax, 352fh; /* AH=GetVect AL=2F */
     push es /* save ES and BX (will be overwritten) */
@@ -1367,23 +1368,20 @@ int main(int argc, char **argv) {
 
   /* is the TSR installed already? */
   if (tsrpresent() != 0) {
-    outmsg("etherdfs is already installed and cannot be loaded twice.\r\n$");
+    #include "msg\\alrload.c"
     return(1);
   }
 
   /* enable the new drive */
   cds = getcds(glob_ldrv);
   if (cds == NULL) {
-    outmsg("Unable to activate the local drive mapping. You are either using an\r\n$");
-    outmsg("unsupported operating system, or your LASTDRIVE directive do not permit\r\n$");
-    outmsg("to define the requested drive letter.\r\n$");
+    #include "msg\\mapfail.c"
     return(1);
   }
 
   /* if the requested drive is already active, fail */
   if (cds->flags != 0) {
-    outmsg("The requested drive letter is already in use. Please choose another\r\n$");
-    outmsg("drive letter.\r\n$");
+    #include "msg\\drvactiv.c"
     return(1);
   }
 
@@ -1391,9 +1389,10 @@ int main(int argc, char **argv) {
    * as DS */
   newdataseg = allocseg(DATASEGSZ);
   if (newdataseg == 0) {
-    outmsg("Memory alloc error!\r\n$");
+    #include "msg\\memfail.c"
     return(1);
   }
+
   /* copy current DS into the new segment and switch to new DS/SS */
   _asm {
     /* save registers on the stack */
@@ -1427,7 +1426,7 @@ int main(int argc, char **argv) {
 
   /* patch the TSR and pktdrv_recv() so they use my new DS */
   if (updatetsrds() != 0) {
-    outmsg("DS/SS relocation failed.\r\n$");
+    #include "msg\\relfail.c"
     freeseg(newdataseg);
     return(1);
   }
@@ -1447,7 +1446,7 @@ int main(int argc, char **argv) {
   }
   /* has it succeeded? */
   if (glob_pktdrv_pktint == 0) {
-    outmsg("Packet driver initialization failed.\r\n$");
+    #include "msg\\pktdfail.c"
     freeseg(newdataseg);
     return(1);
   }
@@ -1461,7 +1460,7 @@ int main(int argc, char **argv) {
     for (i = 0; i < 6; i++) glob_rmac[i] = 0xff;
     /* send a discovery frame that will update glob_rmac */
     if (sendquery(AL_DISKSPACE, glob_ldrv, 0, &answer, &ax, 1) != 6) {
-      outmsg("No etherdfs server found on the LAN (not for requested drive at least).\r\n$");
+      #include "msg\\nosrvfnd.c"
       pktdrv_free(); /* free the pkt drv and quit */
       freeseg(newdataseg);
       return(1);
@@ -1474,7 +1473,7 @@ int main(int argc, char **argv) {
   if ((args.flags & ARGFL_QUIET) == 0) {
     char buff[20];
     int i;
-    outmsg("etherdfs installed (local MAC $");
+    #include "msg\\instlled.c"
     for (i = 0; i < 6; i++) {
       byte2hex(buff + i + i + i, glob_lmac[i]);
     }
@@ -1510,6 +1509,7 @@ int main(int argc, char **argv) {
     int 21h              /* returns the segment of PSP in BX */
     mov glob_pspseg, bx  /* copy PSP segment to glob_pspseg */
   }
+
   /* free the environment (env segment is at offset 2C of the PSP) */
   _asm {
     mov es, glob_pspseg /* load ES with PSP's segment */

@@ -7,10 +7,14 @@
 
 all: etherdfs.exe
 
+genmsg.exe: genmsg.c version.h
+	wcl -y -0 -s -d0 -lr -ms -we -wx -os genmsg.c -fe=genmsg.exe
+
 chint.obj: chint086.asm
 	wasm -0 chint086.asm -fo=chint.obj -ms
 
-etherdfs.exe: etherdfs.c chint.obj dosstruc.h globals.h
+etherdfs.exe: genmsg.exe etherdfs.c chint.obj dosstruc.h globals.h version.h
+	genmsg.exe
 	wcl -y -0 -s -d0 -lr -ms -we -wx -k1024 -fm=etherdfs.map -os chint.obj etherdfs.c -fe=etherdfs.exe
 
 # -y      ignore the WCL env. variable, if any
@@ -21,13 +25,15 @@ etherdfs.exe: etherdfs.c chint.obj dosstruc.h globals.h
 # -ms     small memory model
 # -we     treat all warnings as errors
 # -wx     set warning level to max
-# -k2048  set stack size to 2048 bytes (for the non-resident part)
+# -k1024  set stack size to 1024 bytes (for the non-resident part)
 # -fm=    generate a map file
 # -os     optimize for size
 # -fe     set output file name
 
 clean: .symbolic
 	if exist etherdfs.exe del etherdfs.exe
+	if exist genmsg.exe del genmsg.exe
+	del *.obj
 
 pkg: .symbolic etherdfs.exe
 	if exist etherdfs.zip del etherdfs.zip

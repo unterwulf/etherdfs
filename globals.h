@@ -12,8 +12,12 @@
 
 /* required size (in bytes) of the data segment - this must be bigh enough as
  * to accomodate all "DATA" segments AND the stack, which will be located at
- * the very end of the data segment */
-#define DATASEGSZ 4800
+ * the very end of the data segment. packet drivers tend to require a stack
+ * of several hundreds bytes at least - 1K should be safe... It is important
+ * that DATASEGSZ can contain a stack of AT LEAST the size of the stack used
+ * by the transient code, since the transient part of the program will switch
+ * to it and expects the stack to not become corrupted in the process */
+#define DATASEGSZ 3600
 
 /* a few globals useful only for debug messages */
 #if DEBUGLEVEL > 0
@@ -23,12 +27,6 @@ static unsigned char dbg_hexc[16] = "0123456789ABCDEF";
 #define dbg_startoffset 80*16
 #endif
 
-/* address of the internal stack that will be used by the TSR, as well as
- * the stack memory block itself */
-/*unsigned char glob_tsrstack[1024];
-unsigned short glob_tsrstack_seg;
-unsigned short glob_tsrstack_off;*/
-
 static unsigned char glob_ldrv;    /* local drive letter (0=A:, 1=B:, etc) */
 static unsigned char glob_rdrv;    /* remote drive (0=A:, 1=B:, etc) */
 
@@ -36,7 +34,7 @@ static unsigned char glob_lmac[6]; /* local MAC address */
 static unsigned char glob_rmac[6]; /* remote MAC address */
 
 static unsigned char glob_reqdrv;  /* the requested drive, set by the INT 2F *
-                               * handler and read by process2f()        */
+                                    * handler and read by process2f()        */
 
 static struct sdastruct far *glob_sdaptr; /* pointer to DOS SDA (set by main() at *
                                            * startup, used later by process2f()   */

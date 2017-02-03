@@ -1,0 +1,9 @@
+EtherDFS changelog history
+
+v0.6 [xxxx-xx-xx]:
+ - Significantly reduced EtherDFS resident footprint:
+   - trimming unnecessary startup code by using custom DS and SS (16K -> 8K)
+   - eliminating literal strings from DATA segments (8K -> 6.8K)
+
+v0.5 [2017-01-31]:
+ - first public release.

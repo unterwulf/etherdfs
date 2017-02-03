@@ -7,12 +7,12 @@ odd thing. While trying to limit as much as possible EtherDFS' memory
 footprint, I had to use a few *nasty* tricks that are listed below. I write
 this file mostly for myself so I can keep track of how that monster works.
 
-When going TSR, an application uses the INT 21h, DOS call. This call not only
-makes the application resident, but it also allows to trim any excess memory
-that won't be needed by the application any more. Problem is, that the memory
-can only be trimmed from the application's base address (PSP) upward. This is
-a problem because the order in which compilers lay out the memory is not
-compatible with such use. To take a specific example, here's how a typical
+When going TSR, an application uses the INT 21h,31h DOS call. This call not
+only makes the application resident, but it also allows to trim any excess
+memory that won't be needed by the application any more. Problem is, that the
+memory can only be trimmed from the application's base address (PSP) upward.
+This is a problem because the order in which compilers lay out the memory is
+not compatible with such use. To take a specific example, here's how a typical
 OpenWatcom memory map looks like:
 
   STACK       (application's stack)
@@ -24,12 +24,12 @@ OpenWatcom memory map looks like:
   BEGTEXT     (mostly empty)
   PSP
 
-Looking at the above layout it becomes clear that trimming the code at any
-point would lead to a dysfunctional program at best. Why:
+Looking at the above layout it becomes clear that trimming the code in any
+place would lead to a program that would be dysfunctional at best. Why:
  - all libc routines will end up dispersed inside _TEXT, hence calling them
-   will result in undefined behavior,
+   will result in undefined behavior if _TEXT is not kept entirely,
  - your TSR's routines might very well end up at the end of the _TEXT segment,
-   hence making it impossible to trim the program.
+   hence making it impossible to trim the program at all.
  - trimming the code would make us loose all the DATA segment as well, on
    which the TSR surely relies in one way or another.
 
@@ -40,7 +40,7 @@ It is not a hopeless situation, though!
 First problem can be easily eliminated by simply avoiding using any libc
 functions in your TSR code. Forget about conveniences like sprintf(),
 memcpy(), int86(), chain_intr(), etc etc. You will have to figure out how to
-replace every such call by your own code - at least in the resident parts of
+replace every such call by your own code - at least in the resident part of
 your code. Be warned that your compiler might also emit "hidden" calls that
 you don't know about. This is commonly done by compilers to detect stack
 overflow situations - the stack overflow detection routine is usually part of
@@ -54,7 +54,7 @@ The second problem might or might not actually be a problem, depending on
 your compiler and optimization settings. If the compiler generates machine
 code in the same order than it appears in the source file, then all is well.
 You will simply have to put all resident routines at the top of your source
-code. OpenWatcom seems to do it that way - but I found a simple way to make
+code. OpenWatcom seems to do it that way - but I found a simple method to make
 sure that all my resident code ends up at the top of the program: I instruct
 OpenWatcom to put my resident routines in the _BEGTEXT segment, which is
 almost unused by default, and it works! To achieve that, OpenWatcom provides
@@ -66,10 +66,10 @@ clever "pragma" instructions:
 
 *** Custom DATA & STACK segment ***
 
-Finally, the third problem is the most tricky one to solve. One could think
-that it's enough to simply instruct the linker to reorder the layout as to put
-all DATA-related segments before code, but most compilers do not provide such
-control, and these that do, do not always end up in working code (OpenWatcom
+Finally, the third problem is the most tricky to solve. One could think that
+it is enough to simply instruct the linker to reorder the layout as to put all
+DATA-related segments before code, but most compilers do not provide such
+control, and these that do, do not always end up with working code (OpenWatcom
 makes it possible to reorder segments at link time, but unfortunately it
 doesn't seem to adjust actual addresses of variables in the code, so it's not
 so useful).
@@ -115,5 +115,32 @@ Important: once you know how big your resident code is, add 256 to that! This
 is the size of the PSP. Other compilers might or might not account that, but
 OpenWatcom definitely does not (not in the small model with EXE output at
 least, I didn't check other combinations).
+
+*** Squeeze out some extra bytes by eliminating literal strings ***
+
+The transient part of your program may use pre-initialized arrays, or pointers
+to strings:
+  char hello[] = "Hello";
+  char *wowsig = "wow";
+
+In both cases, chances are that your compiler will push these strings in the
+DATA segment of the program, hence - again - unnecessarily bloat the memory
+area used by the TSR. For simple cases, it's trivial to change such
+declarations into something like this:
+  char hello[6];
+  hello[0]='H'; hello[1]='e'; hello[2]='l'; hello[3]='l'; hello[4]='o';
+
+But what if the amount of text you wish to output is much longer? It might
+become a real pain to handle such big strings, not mentionning the fact that
+you might want to keep your stack usage at a reasonable level as well.
+
+I am aware of no easy solution for this. But since I was motivated, I ended up
+taking the hard road: embedding the strings as machine code. It sounds scary
+(and it should!), but with proper build automation it can be very manageable.
+I have a separate program called "genmsg" that generates assembly functions
+responsible for printing out each of my strings. Every such 'function' lands
+in a separate C file in the 'msg' subdirectory, so I include the needed file
+whenever I want to output a string on the screen.
+
 
 [EOF]
