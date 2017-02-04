@@ -119,7 +119,10 @@ Cons:
 Shortly said: no. EtherDFS is designed by a hobbyist, for hobbyists. It is not
 meant to be used in an environment where security is required. The EtherDFS
 protocol transfers all data as plain text, and doesn't have any provisions for
-authentication nor access control.
+authentication nor access control. It is worth noting that a potentially
+desirable side effect of using raw Ethernet for communication is the fact that
+EtherDFS data won't ever make it outside your LAN, simply because it is
+unrouteable.
 
 
 ===[ But is it still safe for my data? ]======================================
