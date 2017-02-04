@@ -125,9 +125,9 @@ void __declspec(naked) far pktdrv_recv(void) {
 }
 
 
-static unsigned short pktdrv_send(void *buffptr, unsigned short bufferlen) {
+static void pktdrv_send(void *buffptr, unsigned short bufferlen) {
   _asm {
-    mov ax, 400h  /* SendPkt */
+    mov ah, 4h  /* SendPkt */
     mov cx, bufferlen
     push si
     mov si, buffptr /* DS:SI should point to the buff, I do not modify DS
@@ -159,9 +159,6 @@ static unsigned short pktdrv_send(void *buffptr, unsigned short bufferlen) {
     }
   }
 #endif
-
-  /* this should return either the length of the frame (on success), or 0 ("retry later") */
-  return(bufferlen);
 }
 
 
