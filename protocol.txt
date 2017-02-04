@@ -58,6 +58,16 @@ Answer: -
 
 Note: The returned value of AX is 0 on success.
 ==============================================================================
+CLOSEFILE (0x06)
+
+Request: SS
+
+SS = starting sector of the open file (ie. its 16-bit identifier)
+
+Answer: -
+
+Note: The returned value of AX is 0 on success.
+==============================================================================
 READFILE (0x08)
 
 Request: OOOOSSLL
@@ -110,6 +120,17 @@ Answer: ttddssssA
   dd = date of file (word)
   ssss = file size (dword)
   A = single byte with the attributes of the file
+==============================================================================
+RENAME (0x11)
+
+Request: LSSS...DDD...
+  L      = length of the source file name, in bytes
+  SSS... = source file name and path
+  DDD... = destination file name and path
+
+Answer: -
+
+Note: AX is set to non-zero on error.
 ==============================================================================
 DELETE (0x13)
 

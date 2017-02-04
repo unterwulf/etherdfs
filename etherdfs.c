@@ -28,7 +28,7 @@
 #include "version.h" /* program & protocol version */
 
 /* set DEBUGLEVEL to 0, 1 or 2 to turn on debug mode with desired verbosity */
-#define DEBUGLEVEL 0
+#define DEBUGLEVEL 1
 
 /* define the maximum size of a frame, as sent or received by etherdfs.
  * example: value 1084 accomodates payloads up to 1024 bytes +all headers */
@@ -456,11 +456,15 @@ void process2f(void) {
     case AL_CLSFIL: /*** 06h: CLSFIL ****************************************/
       /* my only job is to decrement the SFT's handle count (which I didn't
        * have to increment during OPENFILE since DOS does it... talk about
-       * consistency */
+       * consistency. I also inform the server about this, just so it knows */
       /* ES:DI points to the SFT */
       {
       struct sftstruct far *sftptr = MK_FP(glob_intregs.x.es, glob_intregs.x.di);
       sftptr->handle_count--;
+      ((unsigned short *)buff)[0] = sftptr->start_sector;
+      if (sendquery(AL_CLSFIL, glob_reqdrv, 2, &answer, &ax, 0) == 0) {
+        if (*ax != 0) FAILFLAG(*ax);
+      }
       }
       break;
     case AL_CMMTFIL: /*** 07h: CMMTFIL **************************************/
@@ -605,8 +609,36 @@ void process2f(void) {
       }
       break;
     case AL_RENAME: /*** 11h: RENAME ****************************************/
-      /* TODO */
-      FAILFLAG(2);
+      /* sdaptr->fn1 = old name
+       * sdaptr->fn2 = new name */
+      /* is the operation for the SAME drive? */
+      if (glob_sdaptr->fn1[0] != glob_sdaptr->fn2[0]) {
+        FAILFLAG(2);
+        break;
+      }
+      /* prepare the query (LSSS...DDD...) */
+      for (i = 0; glob_sdaptr->fn1[i] != 0; i++); /* strlen(fn1) */
+      if (i < 2) {
+        FAILFLAG(2);
+        break;
+      }
+      i -= 2; /* trim out the drive: part (C:\FILE --> \FILE) */
+      buff[0] = i;
+      copybytes(buff + 1, glob_sdaptr->fn1 + 2, i);
+      for (i = 0; glob_sdaptr->fn2[i] != 0; i++); /* strlen(fn2) */
+      if (i < 2) {
+        FAILFLAG(2);
+        break;
+      }
+      i -= 2; /* trim out the drive: part (C:\FILE --> \FILE) */
+      copybytes(buff + 1 + buff[0], glob_sdaptr->fn2 + 2, i);
+      /* send the query out */
+      i = sendquery(AL_RENAME, glob_reqdrv, 1 + buff[0] + i, &answer, &ax, 0);
+      if (i != 0) {
+        FAILFLAG(2);
+      } else if (*ax != 0) {
+        FAILFLAG(*ax);
+      }
       break;
     case AL_DELETE: /*** 13h: DELETE ****************************************/
     #if DEBUGLEVEL > 0
@@ -845,7 +877,8 @@ void __interrupt __far inthandler(union INTPACK r) {
       case AL_CREATE:
       case AL_MKDIR:
       case AL_RMDIR:
-      case AL_CHDIR: /* check sda.fn1 for drive */
+      case AL_CHDIR:
+      case AL_RENAME: /* check sda.fn1 for drive */
         glob_reqdrv = DRIVETONUM(glob_sdaptr->fn1[0]);
         break;
       default: /* otherwise check out the CDS (at ES:DI) */
