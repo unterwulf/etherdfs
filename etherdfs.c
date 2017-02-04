@@ -76,58 +76,50 @@ static int len_if_no_wildcards(char far *s) {
  * telling that a packet is incoming, and how big it is, so the application
  * can prepare a buffer for it and hand it back to the packet driver. the
  * second call is just let know that the frame has been copied into the
- * buffer.
- * even though this is properly declared as an interrupt routine, the epilog
- * have to be hand-tuned (this has been lurked from mTCP). */
-void __interrupt __far pktdrv_recv(union INTPACK r) {
-  /* DEBUG("pktdrv_recv() called with AX=%u / CX=%u\n", r.w.ax, r.w.cx); */
+ * buffer. This is a naked function - I don't need the compiler to get into
+ * the way when dealing with packet driver callbacks. */
+void __declspec(naked) far pktdrv_recv(void) {
   _asm {
     jmp skip
     SIG db 'p','k','t','r','c','v'
     skip:
+    /* set my custom DS (not 0, it has been patched at runtime already) */
     push ax
     mov ax, 0
     mov ds, ax
     pop ax
-  }
+    /* handle the call */
+    cmp ax, 0
+    jne secondcall /* if ax > 0, then packet driver just filled my buffer */
+    /* first call: the packet driver needs a buffer of CX bytes */
+    cmp cx, FRAMESIZE /* is cx > FRAMESIZE ? (unsigned) */
+    ja nobufferavail  /* it is too small (that's what she said!) */
+    /* see if buffer not filled already... */
+    cmp glob_pktdrv_recvbufflen, 0 /* is bufflen > 0 ? (signed) */
+    jg nobufferavail  /* if signed > 0, then we are busy already */
 
-  if (r.w.ax == 0) { /* first call: the packet driver needs a buffer */
-    /* DEBUG("pktdrv requests %d bytes for incoming frame\n", r.w.cx); */
-    if ((r.w.cx > sizeof(glob_pktdrv_recvbuff)) || (glob_pktdrv_recvbufflen > 0)) { /* no room or packet too big */
-      /* DEBUG("no room or packet too big\n"); */
-      r.w.es = 0;
-      r.w.di = 0;
-    } else { /* we can handle it */
-      /* DEBUG("buffer assigned\n"); */
-      glob_pktdrv_recvbufflen = 0 - r.w.cx; /* switch value to neg until we recv actual data */
-      r.w.es = FP_SEG(glob_pktdrv_recvbuff);
-      r.w.di = FP_OFF(glob_pktdrv_recvbuff);
-    }
-  } else {
-    /* DEBUG("pktdrv_recv() second call\n"); */
-    /* this is the second pktdrv call - I am supposed to find a new packet
-     * inside recvbuffer. I switch recvbufferlen back to a positive value so the
-     * TCP/IP stack can see there's something available there. */
-    glob_pktdrv_recvbufflen = 0 - glob_pktdrv_recvbufflen;
-    /* DEBUG("a frame of %d bytes is available in buffer now\n", inbufferlen); */
-  }
-
-  /* custom epilog code (copied from mTCP). Rationale: "Some packet drivers
-   * can handle the normal compiler generated epilog, but the Xircom PE3-10BT
-   * drivers definitely can not." */
-  _asm {
-    pop ax
-    pop ax
+    /* buffer is available, set its seg:off in es:di */
+    push ds /* set es:di to recvbuff */
     pop es
-    pop ds
-    pop di
-    pop si
-    pop bp
-    pop bx
-    pop bx
-    pop dx
-    pop cx
-    pop ax
+    mov di, offset glob_pktdrv_recvbuff
+    /* set bufferlen to expected len and switch it to neg until data comes */
+    mov glob_pktdrv_recvbufflen, cx
+    neg glob_pktdrv_recvbufflen
+    retf
+
+  nobufferavail: /* no buffer available, or it's too small -> fail */
+    push ax        /* save ax */
+    xor ax,ax      /* set ax to zero... */
+    push ax        /* and push it to the stack... */
+    push ax        /* twice */
+    pop es         /* zero out es and di - this tells the */
+    pop di         /* packet driver 'sorry no can do'     */
+    pop ax         /* restore ax */
+    retf
+
+  secondcall: /* second call: I've just got data in buff */
+    /* I switch back bufflen to positive so the app can see that something is there now */
+    neg glob_pktdrv_recvbufflen
     retf
   }
 }
@@ -1303,14 +1295,14 @@ static int updatetsrds(void) {
   /* check for the routine's signature first */
   if ((ptr[0] != 'M') || (ptr[1] != 'V') || (ptr[2] != 'e') || (ptr[3] != 't')) return(-1);
   sptr[4] = newds;
+  /* now patch the pktdrv_recv() routine */
+  ptr = (unsigned char far *)pktdrv_recv + 3;
+  sptr = (unsigned short far *)ptr;
   /*{
     int x;
     unsigned short far *VGA = (unsigned short far *)(0xB8000000l);
     for (x = 0; x < 128; x++) VGA[80*12 + ((x >> 6) * 80) + (x & 63)] = 0x1f00 | ptr[x];
   }*/
-  /* now patch the pktdrv_recv() routine */
-  ptr = (unsigned char far *)pktdrv_recv + 23;
-  sptr = (unsigned short far *)ptr;
   /* check for the routine's signature first */
   if ((ptr[0] != 'p') || (ptr[1] != 'k') || (ptr[2] != 't') || (ptr[3] != 'r')) return(-1);
   sptr[4] = newds;
