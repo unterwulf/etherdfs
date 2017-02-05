@@ -56,7 +56,7 @@ Note: all arguments passed to EtherDFS are case-insensitive.
 EtherDFS hardware/software requirements:
  - An 8086/8088 compatible CPU
  - MS-DOS 5.0+ or compatible
- - 8 KiB of available conventional memory
+ - 8 KiB of available conventional memory (can be loaded high)
  - An Ethernet interface and its packet driver
 
 ethersrv, on the other hand, requires a reasonably modern Linux system.
