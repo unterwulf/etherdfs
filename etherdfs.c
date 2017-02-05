@@ -1312,7 +1312,8 @@ static void byte2hex(char *s, unsigned char b) {
 }
 
 /* allocates sz bytes of memory and returns the segment to allocated memory or
- * 0 on error */
+ * 0 on error. the allocation strategy is 'highest possible' (last fit) to
+ * avoid memory fragmentation */
 static unsigned short allocseg(unsigned short sz) {
   unsigned short volatile res = 0;
   /* sz should contains number of 16-byte paragraphs instead of bytes */
@@ -1320,6 +1321,17 @@ static unsigned short allocseg(unsigned short sz) {
   sz >>= 4;
   /* ask DOS for memory */
   _asm {
+    push cx /* save cx */
+    /* set strategy to 'last fit' */
+    mov ah, 58h
+    xor al, al  /* al = 0 means 'get strategy' */
+    int 21h     /* now current strategy is in ax */
+    mov cx, ax  /* copy current strategy to cx */
+    mov ah, 58h
+    mov al, 1   /* al = 1 means 'set strategy' */
+    mov bl, 2   /* 2 or greater means 'last fit' */
+    int 21h
+    /* do the allocation now */
     mov ah, 48h     /* alloc memory (DOS 2+) */
     mov bx, sz      /* number of paragraphs to allocate */
     mov res, 0      /* pre-set res to failure (0) */
@@ -1328,6 +1340,12 @@ static unsigned short allocseg(unsigned short sz) {
     jc failed
     mov res, ax     /* set res to actual result */
     failed:
+    /* set strategy back to its initial setting */
+    mov ah, 58h
+    mov al, 1
+    mov bx, cx
+    int 21h
+    pop cx    /* restore cx */
   }
   return(res);
 }
