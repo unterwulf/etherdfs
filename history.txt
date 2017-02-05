@@ -1,6 +1,6 @@
 EtherDFS changelog history
 
-v0.6 [xxxx-xx-xx]:
+v0.6 [2017-02-05]:
  - significantly reduced EtherDFS resident footprint (16K -> 7K),
  - fixed GETATTR (was returning garbage),
  - added support for 'CLOSE FILE', 'RENAME FILE' and 'SET ATTRIBS' actions.

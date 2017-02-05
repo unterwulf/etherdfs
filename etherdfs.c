@@ -1526,19 +1526,38 @@ int main(int argc, char **argv) {
     for (i = 2; i < 16; i += 3) buff[i] = ':';
     buff[17] = '$';
     outmsg(buff);
-    outmsg(", pktdrvr at INT $");
+    #include "msg\\pktdrvat.c"
     byte2hex(buff, glob_pktdrv_pktint);
     buff[2] = '$';
     outmsg(buff);
-    outmsg(")\r\n  $");
+    buff[0] = ')';
+    buff[1] = '\r';
+    buff[2] = '\n';
+    buff[3] = ' ';
+    buff[4] = '$';
+    outmsg(buff);
     buff[0] = 'A' + glob_ldrv;
     buff[1] = '$';
     outmsg(buff);
-    outmsg(": -> [$");
+    buff[0] = ':';
+    buff[1] = ' ';
+    buff[2] = '-';
+    buff[3] = '>';
+    buff[4] = ' ';
+    buff[5] = '[';
+    buff[6] = '$';
+    outmsg(buff);
     buff[0] = 'A' + glob_rdrv;
     buff[1] = '$';
     outmsg(buff);
-    outmsg(":] on $");
+    buff[0] = ':';
+    buff[1] = ']';
+    buff[2] = ' ';
+    buff[3] = 'o';
+    buff[4] = 'n';
+    buff[5] = ' ';
+    buff[6] = '$';
+    outmsg(buff);
     for (i = 0; i < 6; i++) {
       byte2hex(buff + i + i + i, glob_rmac[i]);
     }

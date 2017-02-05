@@ -106,5 +106,7 @@ int main(void) {
 
   genmsg("msg\\instlled.c", "etherdfs installed (local MAC ");
 
+  genmsg("msg\\pktdrvat.c", ", pktdrvr at INT ");
+
   return(0);
 }
