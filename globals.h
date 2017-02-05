@@ -36,6 +36,7 @@ static unsigned char glob_rmac[6]; /* remote MAC address */
 static unsigned char glob_reqdrv;  /* the requested drive, set by the INT 2F *
                                     * handler and read by process2f()        */
 
+static unsigned short glob_reqstkword; /* WORD saved from the stack (used by SETATTR) */
 static struct sdastruct far *glob_sdaptr; /* pointer to DOS SDA (set by main() at *
                                            * startup, used later by process2f()   */
 

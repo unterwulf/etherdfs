@@ -110,6 +110,16 @@ Answer: BBCCDD
 Note: The AX value is already handled in the protocol's header, no need to
       transmit it a second time here.
 ==============================================================================
+SETATTR (0x0E)
+
+Request: Afff...
+  A      = attributes to set on file
+  fff... = path/file name
+
+Answer: -
+
+Note: AX is set to non-zero on error.
+==============================================================================
 GETATTR (0x0F)
 
 Request: fff...
@@ -120,6 +130,8 @@ Answer: ttddssssA
   dd = date of file (word)
   ssss = file size (dword)
   A = single byte with the attributes of the file
+
+Note: AX is set to non-zero on error.
 ==============================================================================
 RENAME (0x11)
 

@@ -577,8 +577,26 @@ void process2f(void) {
       }
       break;
     case AL_SETATTR: /*** 0Eh: SETATTR **************************************/
-      /* TODO */
-      FAILFLAG(2);
+      /* sdaptr->fn1 -> file to set attributes for */
+      /* stack word -> new attributes (stack must not be changed!) */
+      for (i = 0; glob_sdaptr->fn1[i] != 0; i++); /* strlen(fn1) */
+      if (i < 2) {
+        FAILFLAG(2);
+        break;
+      }
+      i -= 2;
+      buff[0] = glob_reqstkword;
+    #if DEBUGLEVEL > 0
+      dbg_VGA[dbg_startoffset + dbg_xpos++] = 0x1000 | dbg_hexc[(glob_reqstkword >> 4) & 15];
+      dbg_VGA[dbg_startoffset + dbg_xpos++] = 0x1000 | dbg_hexc[glob_reqstkword & 15];
+    #endif
+      copybytes(buff + 1, glob_sdaptr->fn1 + 2, i);
+      i = sendquery(AL_SETATTR, glob_reqdrv, i + 1, &answer, &ax, 0);
+      if (i != 0) {
+        FAILFLAG(2);
+      } else if (*ax != 0) {
+        FAILFLAG(*ax);
+      }
       break;
     case AL_GETATTR: /*** 0Fh: GETATTR **************************************/
       for (i = 0; glob_sdaptr->fn1[i] != 0; i++); /* strlen(fn1) */
@@ -831,9 +849,15 @@ void __interrupt __far inthandler(union INTPACK r) {
     jmp SKIPTSRSIG
     TSRSIG DB 'M','V','e','t','h','d'
     SKIPTSRSIG:
+    /* save AX */
     push ax
+    /* switch to new (patched) DS */
     mov ax, 0
     mov ds, ax
+    /* save one word from the stack (might be used by SETATTR later) */
+    mov ax, [BP+10]
+    mov glob_reqstkword, ax
+    /* restore AX */
     pop ax
   }
 
@@ -870,6 +894,7 @@ void __interrupt __far inthandler(union INTPACK r) {
       case AL_FINDNEXT:
         glob_reqdrv = glob_sdaptr->sdb.drv_lett & 0x1F;
         break;
+      case AL_SETATTR:
       case AL_GETATTR:
       case AL_DELETE:
       case AL_OPEN:
