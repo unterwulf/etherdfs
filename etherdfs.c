@@ -77,20 +77,25 @@ static int len_if_no_wildcards(char far *s) {
  * can prepare a buffer for it and hand it back to the packet driver. the
  * second call is just let know that the frame has been copied into the
  * buffer. This is a naked function - I don't need the compiler to get into
- * the way when dealing with packet driver callbacks. */
+ * the way when dealing with packet driver callbacks.
+ * IMPORTANT: this function must take care to modify ONLY the registers
+ * ES and DI - packet drivers can be easily confused should anything else
+ * be modified. */
 void __declspec(naked) far pktdrv_recv(void) {
   _asm {
     jmp skip
-    SIG db 'p','k','t','r','c','v'
+    SIG db 'p','k','t','r'
     skip:
+    /* save DS and flags to stack */
+    push ds  /* save old ds (I will change it) */
+    push bx  /* save bx (I use it as a temporary register) */
+    pushf    /* save flags */
     /* set my custom DS (not 0, it has been patched at runtime already) */
-    push ax
-    mov ax, 0
-    mov ds, ax
-    pop ax
+    mov bx, 0
+    mov ds, bx
     /* handle the call */
     cmp ax, 0
-    jne secondcall /* if ax > 0, then packet driver just filled my buffer */
+    jne secondcall /* if ax != 0, then packet driver just filled my buffer */
     /* first call: the packet driver needs a buffer of CX bytes */
     cmp cx, FRAMESIZE /* is cx > FRAMESIZE ? (unsigned) */
     ja nobufferavail  /* it is too small (that's what she said!) */
@@ -105,21 +110,26 @@ void __declspec(naked) far pktdrv_recv(void) {
     /* set bufferlen to expected len and switch it to neg until data comes */
     mov glob_pktdrv_recvbufflen, cx
     neg glob_pktdrv_recvbufflen
-    retf
+    /* restore flags, bx and ds, then return */
+    jmp restoreandret
 
   nobufferavail: /* no buffer available, or it's too small -> fail */
-    push ax        /* save ax */
-    xor ax,ax      /* set ax to zero... */
-    push ax        /* and push it to the stack... */
-    push ax        /* twice */
+    xor bx,bx      /* set bx to zero... */
+    push bx        /* and push it to the stack... */
+    push bx        /* twice */
     pop es         /* zero out es and di - this tells the */
     pop di         /* packet driver 'sorry no can do'     */
-    pop ax         /* restore ax */
-    retf
+    /* restore flags, bx and ds, then return */
+    jmp restoreandret
 
   secondcall: /* second call: I've just got data in buff */
     /* I switch back bufflen to positive so the app can see that something is there now */
     neg glob_pktdrv_recvbufflen
+    /* restore flags, bx and ds, then return */
+  restoreandret:
+    popf   /* restore flags */
+    pop bx /* restore bx */
+    pop ds /* restore ds */
     retf
   }
 }
