@@ -3,11 +3,11 @@
                        http://etherdfs.sourceforge.net
 
 
-               +---------[ WARNING: ALPHA SOFTWARE ]---------+
-               | This software is currently in alpha state.  |
-               | Do not expect consistency. Testing purpose  |
-               | only!                                       |
-               +---------------------------------------------+
+                +---------[ WARNING: BETA SOFTWARE ]---------+
+                | This software is currently in beta state.  |
+                | Do not expect consistency. Testing purpose |
+                | only!                                      |
+                +--------------------------------------------+
 
 
 EtherDFS is an 'installable filesystem' TSR for DOS. It maps a drive from a
