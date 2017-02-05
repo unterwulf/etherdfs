@@ -28,7 +28,7 @@
 #include "version.h" /* program & protocol version */
 
 /* set DEBUGLEVEL to 0, 1 or 2 to turn on debug mode with desired verbosity */
-#define DEBUGLEVEL 1
+#define DEBUGLEVEL 0
 
 /* define the maximum size of a frame, as sent or received by etherdfs.
  * example: value 1084 accomodates payloads up to 1024 bytes +all headers */
@@ -546,7 +546,7 @@ void process2f(void) {
           FAILFLAG(*ax);
           break;
         } else { /* success - write amount of bytes written into CX and update SFT */
-          len = ((unsigned short far *)answer)[0];
+          len = ((unsigned short *)answer)[0];
           written += len;
           bytesleft -= len;
           glob_intregs.x.cx = written;
@@ -569,9 +569,9 @@ void process2f(void) {
     case AL_DISKSPACE: /*** 0Ch: get disk information ***********************/
       if (sendquery(AL_DISKSPACE, glob_reqdrv, 0, &answer, &ax, 0) == 6) {
         glob_intregs.w.ax = *ax; /* sectors per cluster */
-        glob_intregs.w.bx = ((unsigned short far *)answer)[0]; /* total clusters */
-        glob_intregs.w.cx = ((unsigned short far *)answer)[1]; /* bytes per sector */
-        glob_intregs.w.dx = ((unsigned short far *)answer)[2]; /* num of available clusters */
+        glob_intregs.w.bx = ((unsigned short *)answer)[0]; /* total clusters */
+        glob_intregs.w.cx = ((unsigned short *)answer)[1]; /* bytes per sector */
+        glob_intregs.w.dx = ((unsigned short *)answer)[2]; /* num of available clusters */
       } else {
         FAILFLAG(2);
       }
@@ -600,12 +600,11 @@ void process2f(void) {
          * AX = attr
          * NOTE: Undocumented DOS talks only about setting AX, no fsize, time
          *       and date, these are documented in RBIL and used by SHSUCDX */
-        glob_intregs.x.cx = ((unsigned short *)buff)[0]; /* time */
-        glob_intregs.x.dx = ((unsigned short *)buff)[1]; /* date */
-        /* FIXME fsize not implemented yet */
-        glob_intregs.x.bx = ((unsigned short *)buff)[3]; /* fsize hi word */
-        glob_intregs.x.di = ((unsigned short *)buff)[2]; /* fsize lo word */
-        *ax = buff[8];
+        glob_intregs.w.cx = ((unsigned short *)answer)[0]; /* time */
+        glob_intregs.w.dx = ((unsigned short *)answer)[1]; /* date */
+        glob_intregs.w.bx = ((unsigned short *)answer)[3]; /* fsize hi word */
+        glob_intregs.w.di = ((unsigned short *)answer)[2]; /* fsize lo word */
+        glob_intregs.w.ax = answer[8];                     /* file attribs */
       }
       break;
     case AL_RENAME: /*** 11h: RENAME ****************************************/
@@ -694,9 +693,9 @@ void process2f(void) {
         sftptr->file_attr = answer[0];
         sftptr->dev_info_word = 0x8040 | glob_reqdrv; /* mark device as network drive */
         sftptr->dev_drvr_ptr = NULL;
-        sftptr->start_sector = ((unsigned short far *)answer)[10];
-        sftptr->file_time = ((unsigned long far *)answer)[3];
-        sftptr->file_size = ((unsigned long far *)answer)[4];
+        sftptr->start_sector = ((unsigned short *)answer)[10];
+        sftptr->file_time = ((unsigned long *)answer)[3];
+        sftptr->file_size = ((unsigned long *)answer)[4];
         sftptr->file_pos = 0;
         sftptr->rel_sector = 0xffff;
         sftptr->abs_sector = 0xffff;
@@ -761,10 +760,10 @@ void process2f(void) {
        */
       copybytes(glob_sdaptr->found_file.fname, answer+1, 11); /* found file name */
       glob_sdaptr->found_file.fattr = answer[0]; /* found file attributes */
-      glob_sdaptr->found_file.time_lstupd = ((unsigned short far *)answer)[6]; /* time (word) */
-      glob_sdaptr->found_file.date_lstupd = ((unsigned short far *)answer)[7]; /* date (word) */
+      glob_sdaptr->found_file.time_lstupd = ((unsigned short *)answer)[6]; /* time (word) */
+      glob_sdaptr->found_file.date_lstupd = ((unsigned short *)answer)[7]; /* date (word) */
       glob_sdaptr->found_file.start_clstr = 0; /* start cluster (I don't care) */
-      glob_sdaptr->found_file.fsize = ((unsigned long far *)answer)[4]; /* fsize (word) */
+      glob_sdaptr->found_file.fsize = ((unsigned long *)answer)[4]; /* fsize (word) */
 
       /* put things into SDB so I can understand where I left should FindNext be called
        *   unsigned char drv_lett
