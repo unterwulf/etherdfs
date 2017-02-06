@@ -1541,8 +1541,9 @@ int main(int argc, char **argv) {
     }
   }
 
-  /* set the drive as being a 'network' disk */
-  cds->flags = CDSFLAG_NET;
+  /* set the drive as being a 'network' disk (also add the PHYSICAL bit,
+   * otherwise MS-DOS 6.0 will ignore the drive) */
+  cds->flags = CDSFLAG_NET | CDSFLAG_PHY;
 
   if ((args.flags & ARGFL_QUIET) == 0) {
     char buff[20];

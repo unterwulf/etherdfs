@@ -16,7 +16,10 @@
 
 
 /* CDS (current directory structure), as used by DOS 4+ */
-#define CDSFLAG_NET (1 << 15)
+#define CDSFLAG_SUB 0x1000u  /* SUBST drive */
+#define CDSFLAG_JOI 0x2000u  /* JOINed drive */
+#define CDSFLAG_PHY 0x4000u  /* Physical drive */
+#define CDSFLAG_NET 0x8000u  /* Network drive */
 struct cdsstruct {
   unsigned char current_path[67]; /* current path */
   unsigned short flags; /* indicates whether the drive is physical, networked, substed or joined*/

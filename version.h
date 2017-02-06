@@ -1,5 +1,5 @@
 /* program version and date */
-#define PVER "0.6"
+#define PVER "0.7"
 #define PDATE "2017"
 
 /* protocol version */
