@@ -349,10 +349,10 @@ static unsigned short sendquery(unsigned char query, unsigned char drive, unsign
    */
 
   /* send the query frame and wait for an answer for about 100ms. then, resend
-   * the query again and again, up to 3 times. the RTC clock at 0x46C is used
+   * the query again and again, up to 5 times. the RTC clock at 0x46C is used
    * as a timing reference. */
   glob_pktdrv_recvbufflen = 0; /* mark the receiving buffer empty */
-  for (count = 0; count < 3; count++) {
+  for (count = 0; count < 5; count++) {
     /* send the query frame out */
     pktdrv_send(glob_pktdrv_sndbuff, bufflen + 60);
     t = *rtc;
