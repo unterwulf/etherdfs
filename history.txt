@@ -3,6 +3,7 @@ EtherDFS changelog history
 v0.7 [xxxx-xx-xx]:
  - MS-DOS compat: flagging newly mapped drive so MS-DOS 6.0 doesn't ignore it,
  - increased timeout retries from 3 to 5 (more reliable on lossy networks),
+ - minor speed optimizations,
  - ...
 
 v0.6 [2017-02-05]:

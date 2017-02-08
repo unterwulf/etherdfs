@@ -333,15 +333,11 @@ static unsigned short sendquery(unsigned char query, unsigned char drive, unsign
   if (bufflen > (sizeof(glob_pktdrv_sndbuff) - 60)) return(0);
   /* inc seq */
   seq++;
-  /* */
-  copybytes((unsigned char far *)glob_pktdrv_sndbuff, (unsigned char far *)glob_rmac, 6);
-  copybytes((unsigned char far *)glob_pktdrv_sndbuff + 6, (unsigned char far *)glob_lmac, 6);
-  glob_pktdrv_sndbuff[12] = 0xED;
-  glob_pktdrv_sndbuff[13] = 0xF5;
+  /* I do not fill in ethernet headers (src mac, dst mac, ethertype), nor
+   * PROTOVER, since all these have been inited already at transient time */
   /* padding (42 bytes) */
-  glob_pktdrv_sndbuff[56] = PROTOVER; /* protocol version */
   glob_pktdrv_sndbuff[57] = seq;   /* seq number */
-  glob_pktdrv_sndbuff[58] = drive; /* this should be resolved to remote drive */
+  glob_pktdrv_sndbuff[58] = drive;
   glob_pktdrv_sndbuff[59] = query; /* AL value (query) */
   /* I do not copy anything more into glob_pktdrv_sndbuff - the caller is
    * expected to have already copied all relevant data into glob_pktdrv_sndbuff+60
@@ -367,16 +363,16 @@ static unsigned short sendquery(unsigned char query, unsigned char drive, unsign
       if (glob_pktdrv_recvbufflen < 60) goto ignoreframe;
       /* is it for me? (correct src mac & dst mac) */
       for (i = 0; i < 6; i++) {
-        if (glob_pktdrv_recvbuff[i] != glob_lmac[i]) goto ignoreframe;
-        if ((updatermac == 0) && (glob_pktdrv_recvbuff[i+6] != glob_rmac[i])) goto ignoreframe;
+        if (glob_pktdrv_recvbuff[i] != GLOB_LMAC[i]) goto ignoreframe;
+        if ((updatermac == 0) && (glob_pktdrv_recvbuff[i+6] != GLOB_RMAC[i])) goto ignoreframe;
       }
       /* is the ethertype and seq what I expect? */
-      if ((glob_pktdrv_recvbuff[12] != 0xED) || (glob_pktdrv_recvbuff[13] != 0xF5) || (glob_pktdrv_recvbuff[57] != glob_pktdrv_sndbuff[57])) goto ignoreframe;
+      if ((((unsigned short *)glob_pktdrv_recvbuff)[6] != 0xF5EDu) || (glob_pktdrv_recvbuff[57] != seq)) goto ignoreframe;
       /* return buffer (without headers and seq) */
       *replyptr = glob_pktdrv_recvbuff + 60;
       *replyax = (unsigned short *)(glob_pktdrv_recvbuff + 58);
       /* update glob_rmac if needed, then return */
-      if (updatermac != 0) copybytes(glob_rmac, glob_pktdrv_recvbuff + 6, 6);
+      if (updatermac != 0) copybytes(GLOB_RMAC, glob_pktdrv_recvbuff + 6, 6);
       return(glob_pktdrv_recvbufflen - 60);
       ignoreframe: /* ignore this frame and wait for the next one */
       glob_pktdrv_recvbufflen = 0; /* mark the buffer empty */
@@ -977,7 +973,6 @@ void begtextend(void) {
 
 /* registers a packet driver handle to use on subsequent calls */
 static int pktdrv_accesstype(void) {
-  static unsigned char etype[2] = {0xED, 0xF5}; /* my custom ethertype */
   unsigned char cflag = 0;
 
   _asm {
@@ -985,7 +980,7 @@ static int pktdrv_accesstype(void) {
     mov bx, 0ffffh      /* if_type = 0xffff means 'all' */
     mov dl, 0           /* if_number: 0 (first interface) */
     /* I don't modify DS, it already points to the segment of etype */
-    mov si, offset etype /* DS:SI should point to etype[] */
+    mov si, glob_ethertype /* DS:SI should point to etype[] */
     mov cx, 2           /* typelen (ethertype is 16 bits) */
     /* ES:DI points to the receiving routine */
     push cs /* write segment of pktdrv_recv into es */
@@ -1045,6 +1040,11 @@ static int pktdrv_init(unsigned short pktintparam) {
   sig[5] = 'R';
   sig[6] = 'V';
   sig[7] = 'R';
+
+  /* set my ethertype to 0xF5ED (EDF5 in network byte order) */
+  *glob_ethertype = 0xF5EDu;
+  /* set the protover field in send buffer (I won't touch it again) */
+  glob_pktdrv_sndbuff[56] = PROTOVER; /* protocol version */
 
   pktdrvfunc += 3; /* skip three bytes of executable code */
   for (i = 0; i < 8; i++) if (sig[i] != pktdrvfunc[i]) return(-1);
@@ -1252,7 +1252,7 @@ static int parseargv(struct argstruct *args) {
   if ((args->argv[1][0] == ':') && (args->argv[1][1] == ':') && (args->argv[1][2] == 0)) {
     args->flags |= ARGFL_AUTO;
   } else {
-    if (string2mac(glob_rmac, args->argv[1]) != 0) return(-1);
+    if (string2mac(GLOB_RMAC, args->argv[1]) != 0) return(-1);
   }
 
   /* is rdrive:ldrive option sane? */
@@ -1524,14 +1524,14 @@ int main(int argc, char **argv) {
     freeseg(newdataseg);
     return(1);
   }
-  pktdrv_getaddr(glob_lmac);
+  pktdrv_getaddr(GLOB_LMAC);
 
   /* should I auto-discover the server? */
   if ((args.flags & ARGFL_AUTO) != 0) {
     unsigned short i, *ax;
     unsigned char *answer;
     /* set (temporarily) glob_rmac to broadcast */
-    for (i = 0; i < 6; i++) glob_rmac[i] = 0xff;
+    for (i = 0; i < 6; i++) GLOB_RMAC[i] = 0xff;
     /* send a discovery frame that will update glob_rmac */
     if (sendquery(AL_DISKSPACE, glob_ldrv, 0, &answer, &ax, 1) != 6) {
       #include "msg\\nosrvfnd.c"
@@ -1550,7 +1550,7 @@ int main(int argc, char **argv) {
     int i;
     #include "msg\\instlled.c"
     for (i = 0; i < 6; i++) {
-      byte2hex(buff + i + i + i, glob_lmac[i]);
+      byte2hex(buff + i + i + i, GLOB_LMAC[i]);
     }
     for (i = 2; i < 16; i += 3) buff[i] = ':';
     buff[17] = '$';
@@ -1588,7 +1588,7 @@ int main(int argc, char **argv) {
     buff[6] = '$';
     outmsg(buff);
     for (i = 0; i < 6; i++) {
-      byte2hex(buff + i + i + i, glob_rmac[i]);
+      byte2hex(buff + i + i + i, GLOB_RMAC[i]);
     }
     for (i = 2; i < 16; i += 3) buff[i] = ':';
     buff[17] = '\r';

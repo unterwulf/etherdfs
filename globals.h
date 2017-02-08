@@ -30,8 +30,18 @@ static unsigned char dbg_hexc[16] = "0123456789ABCDEF";
 static unsigned char glob_ldrv;    /* local drive letter (0=A:, 1=B:, etc) */
 static unsigned char glob_rdrv;    /* remote drive (0=A:, 1=B:, etc) */
 
-static unsigned char glob_lmac[6]; /* local MAC address */
-static unsigned char glob_rmac[6]; /* remote MAC address */
+/* global variables related to packet driver management and handling frames */
+static unsigned char glob_pktdrv_recvbuff[FRAMESIZE];
+static signed short volatile glob_pktdrv_recvbufflen; /* length of the frame in buffer, 0 means "free", and neg value means "awaiting" */
+static unsigned short glob_pktdrv_pkthandle;  /* handler returned by the packet driver */
+static unsigned char glob_pktdrv_sndbuff[FRAMESIZE]; /* this not only is my send-frame buffer, but I also use it to store permanently lmac, rmac, ethertype and PROTOVER at proper places */
+static unsigned char glob_pktdrv_pktint;      /* software interrupt of the packet driver */
+static void (interrupt far *glob_pktdrv_pktcall)(); /* vector address of the pktdrv interrupt */
+
+/* a few definitions for data that points to my sending buffer */
+#define GLOB_LMAC (glob_pktdrv_sndbuff + 6) /* local MAC address */
+#define GLOB_RMAC (glob_pktdrv_sndbuff)     /* remote MAC address */
+static unsigned short *glob_ethertype = ((unsigned short *)glob_pktdrv_sndbuff)+6; /* ethertype field */
 
 static unsigned char glob_reqdrv;  /* the requested drive, set by the INT 2F *
                                     * handler and read by process2f()        */
@@ -53,14 +63,6 @@ static unsigned short glob_oldstack_off;
 
 /* an INTPACK structure used to store registers as set when INT2F is called */
 static union INTPACK glob_intregs;
-
-/* global variables related to packet driver management and handling frames */
-static unsigned char glob_pktdrv_recvbuff[FRAMESIZE];
-static signed short volatile glob_pktdrv_recvbufflen; /* length of the frame in buffer, 0 means "free", and neg value means "awaiting" */
-static unsigned short glob_pktdrv_pkthandle;  /* handler returned by the packet driver */
-static unsigned char glob_pktdrv_sndbuff[FRAMESIZE];
-static unsigned char glob_pktdrv_pktint;      /* software interrupt of the packet driver */
-static void (interrupt far *glob_pktdrv_pktcall)(); /* vector address of the pktdrv interrupt */
 
 
 #endif
