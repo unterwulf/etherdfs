@@ -80,12 +80,22 @@ segment provided by the compiler. Instead, I allocate my own segment through
 an INT 21h,48h call, and I force EtherDFS to use THAT as its DATA & STACK
 segment. Easier said than done!
 
-*** Allocating the right amount of memory ***
+*** Allocating memory: right amount, right place ***
 
 So I need to allocate memory to replace the DATA+STACK segment used by my
 program. Okay, but how much exactly? To figure this out, the compiler's
 memory map is of tremendous help. Simply add the size of all your DATA
 segments, add the amount of stack you'd like your TSR to have, and voila.
+
+Not only you need to allocate the right amount of memory, but you also need to
+allocate it at a "good" place. By default, your allocation might end up just
+above your program. What difference does it make, you ask? Well, once your
+program will be trimmed, it will leave some free space in memory. If this free
+space is not contiguous with the rest of your system's free memory, DOS will
+be unable to use it to load programs into it... That's called memory
+fragmentation. To avoid that, it is possible to force DOS to allocate new
+memory as high as possible by temporarily overriding its memory allocation
+strategy - see INT 21h/AH=58h.
 
 *** Self-modifying code ***
 
@@ -102,18 +112,18 @@ new segment, as obtained from the memory allocation function.
 
 Once all is ready, you can at last go TSR and drop the transient part of the
 application's memory, along with the old DATA & STACK segment. The "go TSR"
-call (also known by its little name "INT 21h,") expects to obtain the amount
-of memory that need to be kept, in 16-bytes units (paragraphs). But how do I
-know how many paragraphs my resident code really takes? Two solutions here:
-either check this out in your compiler's memory map, and report the size in
-your source code, or use a little trick to figure it out at compile time...
+call (also known by its little name "INT 21h/AH=31h") expects to obtain the
+amount of memory that need to be kept, in 16-bytes units (paragraphs). But how
+do I know how many paragraphs my resident code really takes? Two solutions
+here: either check this out in your compiler's memory map, and report the size
+in your source code, or use a little trick to figure it out at compile time...
 The trick is as simple as inserting a code symbol (in my case I used an empty
 function) at the end of your resident code. The offset of this symbol will
-tell exactly how big is the resident code.
+tell you exactly how big is the resident code.
 
 Important: once you know how big your resident code is, add 256 to that! This
-is the size of the PSP. Other compilers might or might not account that, but
-OpenWatcom definitely does not (not in the small model with EXE output at
+is the size of the PSP. Other compilers might or might not account for that,
+but OpenWatcom definitely does not (not in the small model with EXE output at
 least, I didn't check other combinations).
 
 *** Squeeze out some extra bytes by eliminating literal strings ***
@@ -124,14 +134,14 @@ to strings:
   char *wowsig = "wow";
 
 In both cases, chances are that your compiler will push these strings in the
-DATA segment of the program, hence - again - unnecessarily bloat the memory
+DATA segment of the program, hence - again - unnecessarily bloating the memory
 area used by the TSR. For simple cases, it's trivial to change such
-declarations into something like this:
+declarations into something like this, to enforce stack usage:
   char hello[6];
   hello[0]='H'; hello[1]='e'; hello[2]='l'; hello[3]='l'; hello[4]='o';
 
-But what if the amount of text you wish to output is much longer? It might
-become a real pain to handle such big strings, not mentionning the fact that
+But what if the amount of text you wish to output is much larger? It might
+become a real pain to handle very long strings, not mentionning the fact that
 you might want to keep your stack usage at a reasonable level as well.
 
 I am aware of no easy solution for this. But since I was motivated, I ended up
