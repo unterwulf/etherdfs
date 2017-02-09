@@ -3,4 +3,4 @@
 #define PDATE "2017"
 
 /* protocol version */
-#define PROTOVER 0
+#define PROTOVER 1

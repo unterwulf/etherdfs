@@ -160,13 +160,6 @@ static void pktdrv_send(void *buffptr, unsigned short bufferlen) {
       dbg_VGA[241+i*3] = 0x1700 | dbg_hexc[((unsigned char *)buffptr)[i] & 15];
       dbg_VGA[242+i*3] = 0x1700;
     }
-    if (regs.x.cflag != 0) {
-      dbg_VGA[dbg_startoffset+dbg_xpos++] = 0x8100 | '!';
-      dbg_VGA[dbg_startoffset+dbg_xpos++] = 0x8100 | dbg_hexc[regs.h.dh >> 4];
-      dbg_VGA[dbg_startoffset+dbg_xpos++] = 0x8100 | dbg_hexc[regs.h.dh & 15];
-    } else {
-      dbg_VGA[dbg_startoffset+dbg_xpos++] = 0x8100 | '+';
-    }
   }
 #endif
 }
@@ -685,6 +678,7 @@ void process2f(void) {
       break;
     case AL_OPEN: /*** 16h: OPEN ********************************************/
     case AL_CREATE: /*** 17h: CREATE ****************************************/
+    case AL_SPOPNFIL: /*** 2Eh: SPOPNFIL ************************************/
     #if DEBUGLEVEL > 0
       dbg_msg = glob_sdaptr->fn1;
     #endif
@@ -695,18 +689,27 @@ void process2f(void) {
         break;
       }
       i -= 2;
-      /* send query */
-      copybytes(buff, glob_sdaptr->fn1 + 2, i);
-      i = sendquery(subfunction, glob_reqdrv, i, &answer, &ax, 0);
+      /* prepare and send query (SSCCMMfff...) */
+      ((unsigned short *)buff)[0] = glob_reqstkword; /* WORD from the stack */
+      ((unsigned short *)buff)[1] = glob_sdaptr->spop_act; /* action code (SPOP only) */
+      ((unsigned short *)buff)[2] = glob_sdaptr->spop_mode; /* open mode (SPOP only) */
+      copybytes(buff + 6, glob_sdaptr->fn1 + 2, i);
+      i = sendquery(subfunction, glob_reqdrv, i + 6, &answer, &ax, 0);
       if ((unsigned short)i == 0xffffu) {
         FAILFLAG(2);
-      } else if ((i != 22) || (*ax != 0)) {
+      } else if ((i != 24) || (*ax != 0)) {
         FAILFLAG(*ax);
       } else {
         /* ES:DI contains an uninitialized SFT */
         struct sftstruct far *sftptr = MK_FP(glob_intregs.x.es, glob_intregs.x.di);
-        sftptr->open_mode &= 0xfff0; /* sanitize the open mode */
-        sftptr->open_mode |= 2; /* read/write */
+        /* special treatment for SPOP, (set open_mode and return CX, too) */
+        if (subfunction == AL_SPOPNFIL) {
+          glob_intregs.w.cx = ((unsigned short *)answer)[11];
+          sftptr->open_mode = glob_sdaptr->spop_mode; /* not super sure about that... */
+        } else {
+          sftptr->open_mode &= 0xfff0; /* sanitize the open mode */
+          sftptr->open_mode |= 2; /* read/write */
+        }
         if (sftptr->open_mode & 0x8000) {
           /* TODO FIXME no idea what I should do here */
           /* set_sft_owner(p); */
@@ -835,10 +838,6 @@ void process2f(void) {
        * returns AX=2 there, and so do I. */
       glob_intregs.w.ax = 2;
       break;
-    case AL_SPOPNFIL: /*** 2Eh: SPOPNFIL ************************************/
-      /* TODO */
-      FAILFLAG(2);
-      break;
   }
 
   /* DEBUG */
@@ -869,6 +868,8 @@ void __interrupt __far inthandler(union INTPACK r) {
 
   /* DEBUG output (BLUE) */
 #if DEBUGLEVEL > 1
+  dbg_VGA[dbg_startoffset + dbg_xpos++] = 0x1e00 | (dbg_hexc[(r.h.ah >> 4) & 0xf]);
+  dbg_VGA[dbg_startoffset + dbg_xpos++] = 0x1e00 | (dbg_hexc[r.h.ah & 0xf]);
   dbg_VGA[dbg_startoffset + dbg_xpos++] = 0x1e00 | (dbg_hexc[(r.h.al >> 4) & 0xf]);
   dbg_VGA[dbg_startoffset + dbg_xpos++] = 0x1e00 | (dbg_hexc[r.h.al & 0xf]);
   dbg_VGA[dbg_startoffset + dbg_xpos++] = 0;
@@ -905,6 +906,7 @@ void __interrupt __far inthandler(union INTPACK r) {
       case AL_DELETE:
       case AL_OPEN:
       case AL_CREATE:
+      case AL_SPOPNFIL:
       case AL_MKDIR:
       case AL_RMDIR:
       case AL_CHDIR:
