@@ -1214,18 +1214,18 @@ static int hexpair2int(char *hx) {
 
 /* translates an ASCII MAC address into a 6-bytes binary string */
 static int string2mac(unsigned char *d, char *mac) {
-  int i, j, v;
+  int i, v;
   /* is it exactly 17 chars long? */
   for (i = 0; mac[i] != 0; i++);
   if (i != 17) return(-1);
   /* are nibble pairs separated by colons? */
   for (i = 2; i < 16; i += 3) if (mac[i] != ':') return(-1);
   /* translate each byte to its numeric value */
-  j = 0;
   for (i = 0; i < 16; i += 3) {
     v = hexpair2int(mac + i);
     if (v < 0) return(-1);
-    mac[j++] = v;
+    *d = v;
+    d++;
   }
   return(0);
 }
