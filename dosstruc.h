@@ -37,7 +37,7 @@ struct cdsstruct {
   unsigned short backslash_offset; /* offset in current_path of '\' (always 2, unless it's a SUBST drive) */
   /* DOS 4 and newer have 7 extra bytes here */
   unsigned char f2[7];
-};
+}; /* 88 bytes total */
 
 
 /*
@@ -81,7 +81,7 @@ struct sdastruct {
     unsigned short start_clstr; /* (optional) */
     unsigned long fsize;
   } found_file;
-  struct cdsstruct drive_cdscopy;
+  struct cdsstruct drive_cdscopy; /* 88 bytes total */
   unsigned char fcb_fn1[11];
   unsigned char f3;
   unsigned char fcb_fn2[11];

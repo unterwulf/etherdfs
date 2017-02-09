@@ -705,14 +705,13 @@ void process2f(void) {
         /* special treatment for SPOP, (set open_mode and return CX, too) */
         if (subfunction == AL_SPOPNFIL) {
           glob_intregs.w.cx = ((unsigned short *)answer)[11];
-          sftptr->open_mode = glob_sdaptr->spop_mode; /* not super sure about that... */
+          sftptr->open_mode = glob_sdaptr->spop_mode & 0x7f; /* not super sure about that... this is how PHANTOM.C does it */
         } else {
           sftptr->open_mode &= 0xfff0; /* sanitize the open mode */
           sftptr->open_mode |= 2; /* read/write */
         }
         if (sftptr->open_mode & 0x8000) {
-          /* TODO FIXME no idea what I should do here */
-          /* set_sft_owner(p); */
+          /* TODO FIXME no idea what I should do here - PHANTOM talks about set_sft_owner() */
         #if DEBUGLEVEL > 0
           dbg_VGA[25*80] = 0x1700 | '$';
         #endif
@@ -727,7 +726,7 @@ void process2f(void) {
         sftptr->rel_sector = 0xffff;
         sftptr->abs_sector = 0xffff;
         sftptr->dir_sector = 0;
-        sftptr->dir_entry_no = 0;
+        sftptr->dir_entry_no = 0xff; /* why such value? no idea, PHANTOM.C uses that, too */
         copybytes(sftptr->file_name, answer + 1, 11);
       }
       break;
