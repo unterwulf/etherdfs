@@ -170,18 +170,28 @@ Answer: AfffffffffffttddssssCCRR (24 bytes)
 
 Note: Returns AX != 0 on error.
 ==============================================================================
-FINDFIRST (0x1B) and FINDNEXT (0x1C)
+FINDFIRST (0x1B)
 
-Request: DDAffffffff...
-  DD = a 16-bit value holding the directory count, set only for FINDNEXT
+Request: Affffffff...
   A = single byte with attributes we look for
   ffff... = path/file mask (eg. X:\DIR\FILE????.???), variable length (up to
             the end of the ethernet frame)
 
-Answer: Afffffffffffttddssss (20 bytes)
+Answer: AfffffffffffttddssssCC (22 bytes)
   A = single byte with the attributes of the file
   fff... = filename in FCB format (always 11 bytes, "FILE0000TXT")
   tt = time of file (word)
   dd = date of file (word)
   ssss = file size (dword)
+  CC = "cluster" of the directory (its 16-bit identifier)
+==============================================================================
+FINDNEXT (0x1C)
+
+Request: CCDDAfffffffffff
+  CC = "cluster" of the searched directory (its 16-bit identifier)
+  DD = a 16-bit value holding the directory count
+  A = single byte with attributes we look for
+  ffff... = an 11-bytes file search template (eg. FILE????.???)
+
+Answer: exactly the same as for FindFirst
 ==============================================================================

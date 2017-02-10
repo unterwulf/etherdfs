@@ -731,7 +731,7 @@ void process2f(void) {
       }
       break;
     case AL_FINDFIRST: /*** 1Bh: FINDFIRST **********************************/
-    case AL_FINDNEXT:  /*** 1Bh: FINDNEXT ***********************************/
+    case AL_FINDNEXT:  /*** 1Ch: FINDNEXT ***********************************/
       {
       /* AX = 111Bh
       SS = DS = DOS DS
@@ -748,23 +748,31 @@ void process2f(void) {
       CF clear if successful
       [DTA] = updated findfirst search data
       (bit 7 of first byte must be set)
-      [DTA+15h] = standard directory entry for file (see #01352) */
+      [DTA+15h] = standard directory entry for file (see #01352)
+
+      FindNext is the same, but only SDB should be used to fetch search params
+      */
 
 #if DEBUGLEVEL > 0
       dbg_msg = glob_sdaptr->fn1;
 #endif
-      /* prepare the query buffer */
+      /* prepare the query buffer (i must provide query's length) */
       if (subfunction == AL_FINDFIRST) {
-        ((unsigned short far *)buff)[0] = 0; /* unused (for findnext only) */
-      } else { /* FindNext needs to increment dir_entry */
-        glob_sdaptr->sdb.dir_entry++;
-        ((unsigned short far *)buff)[0] = glob_sdaptr->sdb.dir_entry;
+        /* FindFirst needs to fetch search arguments from SDA */
+        buff[0] = glob_sdaptr->srch_attr; /* file attributes to look for */
+        /* copy fn1 (w/o drive) to buff */
+        for (i = 2; glob_sdaptr->fn1[i] != 0; i++) buff[i-1] = glob_sdaptr->fn1[i];
+      } else { /* FindNext needs to fetch search arguments from SDB */
+        glob_sdaptr->sdb.dir_entry++; /* FindNext needs to increment dir_entry */
+        ((unsigned short *)buff)[0] = glob_sdaptr->sdb.par_clstr;
+        ((unsigned short *)buff)[1] = glob_sdaptr->sdb.dir_entry;
+        buff[4] = glob_sdaptr->sdb.srch_attr;
+        /* copy search template to buff */
+        for (i = 0; i < 11; i++) buff[i+5] = glob_sdaptr->sdb.srch_tmpl[i];
+        i += 5; /* i must provide the exact query's length */
       }
-      buff[2] = glob_sdaptr->srch_attr; /* file attributes to look for */
-      /* copy fn1 (w/o drive) to buff */
-      for (i = 2; glob_sdaptr->fn1[i] != 0; i++) buff[i+1] = glob_sdaptr->fn1[i];
       /* send query to remote peer and wait for answer */
-      if (sendquery(subfunction, glob_reqdrv, i+1, &answer, &ax, 0) != 20) {
+      if (sendquery(subfunction, glob_reqdrv, i, &answer, &ax, 0) != 22) {
         if (subfunction == AL_FINDFIRST) {
           FAILFLAG(2); /* a failed findfirst returns error 2 (file not found) */
         } else {
@@ -804,7 +812,7 @@ void process2f(void) {
       glob_sdaptr->sdb.srch_attr = glob_sdaptr->srch_attr;
       /* zero out dir_entry only on FindFirst (FindNext contains a valid value already) */
       if (subfunction == AL_FINDFIRST) glob_sdaptr->sdb.dir_entry = 0;
-      glob_sdaptr->sdb.par_clstr = 0;
+      glob_sdaptr->sdb.par_clstr = ((unsigned short *)answer)[10];
 
       /* update the DTA with a valid FindFirst structure (21 bytes)
        * 00h unsigned char drive letter (7bits, MSB must be set for remote drives)

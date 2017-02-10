@@ -138,16 +138,4 @@ struct sftstruct {
   char file_name[11];
 };
 
-
-/* FindFirst/Next data block - ALL DOS VERSIONS */
-struct findstruct {
-  unsigned char drive_no;
-  char srch_mask[11];
-  unsigned char attr_mask;
-  unsigned int dir_entry_no;
-  unsigned int dir_sector;
-  unsigned char f1[4];
-};
-
-
 #endif
