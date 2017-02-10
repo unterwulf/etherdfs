@@ -42,6 +42,7 @@ static void fileclose(unsigned short fhandle) {
 int main(int argc, char **argv) {
   unsigned short fhandle = 0, myax = 0, mycx = 0, mycflag = 0;
   char *fname;
+  char *payload = "Hello!\r\n";
   if (argc != 2) {
     printf("creates a test file and tests DOS behaviour regarding INT21h/AX=6C00h calls\r\nusage: test file\r\n");
     return(1);
@@ -73,12 +74,116 @@ int main(int argc, char **argv) {
     printf("ERROR! The call should have failed!\r\n");
     fileclose(fhandle);
     return(1);
-  } else {
-    printf("OK\r\n-----------------------\r\n");
   }
+  printf("OK\r\n-----------------------\r\n");
 
   /* create & open fname, write a short string inside, then close it */
+  printf("Create the file, but only if it doesn't exist...\r\n");
+  _asm {
+    mov ax, 6c00h
+    xor bl, bl  /* open_mode = 0*/
+    mov cx, 20h /* archive bit only */
+    xor dh, dh  /* dh is reserved */
+    mov dl, 10h /* fail if file exists, create it if not */
+    push si     /* save SI */
+    mov si, fname
+    mov mycflag, 1
+    int 21h
+    jc goterr
+    mov mycflag, 0
+    goterr:
+    mov fhandle, ax
+    mov myax, ax
+    mov mycx, cx
+    pop si      /* restore SI */
+  }
+  printf("AX=%04Xh CX=%04Xh CFLAG=%d\r\n", myax, mycx, mycflag);
+  if (mycflag != 0) {
+    printf("ERROR!\r\n");
+    return(1);
+  }
+  printf("OK\r\n-----------------------\r\n");
+  _asm {
+    mov ah, 40h
+    mov bx, fhandle
+    mov cx, 8
+    mov dx, payload
+    int 21h
+  }
+  fileclose(fhandle);
+
   /* open existing file fname, check that it's not empty and then close it */
+  printf("Open existing file...\r\n");
+  _asm {
+    mov ax, 6c00h
+    xor bl, bl  /* open_mode = 0*/
+    mov cx, 20h /* archive bit only */
+    xor dh, dh  /* dh is reserved */
+    mov dl, 01h /* fail if file doesn't exists, open otherwise */
+    push si     /* save SI */
+    mov si, fname
+    mov mycflag, 1
+    int 21h
+    jc goterr
+    mov mycflag, 0
+    goterr:
+    mov fhandle, ax
+    mov myax, ax
+    mov mycx, cx
+    pop si      /* restore SI */
+  }
+  printf("AX=%04Xh CX=%04Xh CFLAG=%d\r\n", myax, mycx, mycflag);
+  if (mycflag != 0) {
+    printf("ERROR!\r\n");
+    return(1);
+  }
+  printf("OK\r\n-----------------------\r\n");
+
+  /* Check file size */
+  printf("Check file size...\r\n");
+  _asm {
+    mov ah, 42h  /* lseek */
+    mov al, 2    /* al = 0 (seek from end) */
+    mov bx, fhandle
+    xor cx, cx /* CX:DX -> offset from origin */
+    xor dx, dx
+    mov mycflag, 1
+    int 21h
+    jc goterr
+    mov mycflag, 0
+    goterr:
+    mov myax, ax
+    mov mycx, cx
+  }
+  printf("AX=%04Xh CX=%04Xh CFLAG=%d\r\n", myax, mycx, mycflag);
+  if ((mycflag != 0) || (myax != 8)) {
+    printf("ERROR!\r\n");
+    return(1);
+  }
+  printf("OK\r\n-----------------------\r\n");
+
+  fileclose(fhandle);
+
+  printf("Check file attributes...\r\n");
+  _asm {
+    mov ax, 4300h
+    mov dx, fname
+    mov cx, 0
+    mov mycflag, 1
+    int 21h
+    jc goterr
+    mov mycflag, 0
+    goterr:
+    mov myax, ax
+    mov mycx, cx
+  }
+  printf("AX=%04Xh CX=%04Xh CFLAG=%d\r\n", myax, mycx, mycflag);
+  if ((mycflag != 0) || (mycx != 0x20)) {
+    printf("ERROR!\r\n");
+    return(1);
+  }
+  printf("OK\r\n-----------------------\r\n");
+
   /* try creating file fname again (while it exists already) - should fail */
   /* open existing file fname, truncating it, and close it */
   /* open existing file fname and check that its size is zero, then close it */
