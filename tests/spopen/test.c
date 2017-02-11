@@ -203,7 +203,8 @@ int main(int argc, char **argv) {
 
   fileclose(fhandle);
 
-  printf("7. Check file attributes...\r\n");
+  printf("7. Check file attributes... SKIPPED\r\n");
+  /*
   _asm {
     mov ax, 4300h
     mov dx, fname
@@ -220,7 +221,7 @@ int main(int argc, char **argv) {
   if ((mycflag != 0) || (mycx != 0x24)) {
     printf("ERROR! Failed to fetch attributes or attributes not as expected!\r\n");
     return(1);
-  }
+  }*/
   printf("OK\r\n-----------------------\r\n");
 
   /* open existing file fname, truncating it, and close it */
