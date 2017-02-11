@@ -28,12 +28,19 @@
 #include <stdio.h>
 
 
-static void fileclose(unsigned short fhandle) {
+/* returns 0 on success, non-zero otherwise */
+static int fileclose(unsigned short fhandle) {
+  int res = 0;
   _asm {
     mov ah, 3eh /* close file */
     mov bx, fhandle
+    mov res, 1
     int 21h
+    jc done
+    mov res, 0
+    done:
   }
+  return(res);
 }
 
 int main(int argc, char **argv) {
@@ -116,7 +123,10 @@ int main(int argc, char **argv) {
     mov mycx, cx
   }
   printf("AX=%04Xh CX=%04Xh CFLAG=%d\r\n", myax, mycx, mycflag);
-  fileclose(fhandle);
+  if (fileclose(fhandle) != 0) {
+    printf("ERROR! File close failed!\r\n");
+    return(1);
+  }
   if ((mycflag != 0) || (myax != 8)) {
     printf("ERROR! Write failed or wrote incorrect amount of bytes!\r\n");
     return(1);
@@ -201,7 +211,10 @@ int main(int argc, char **argv) {
   }
   printf("OK\r\n-----------------------\r\n");
 
-  fileclose(fhandle);
+  if (fileclose(fhandle) != 0) {
+    printf("ERROR! File close failed!\r\n");
+    return(1);
+  }
 
   printf("7. Check file attributes... SKIPPED\r\n");
   /*
@@ -250,7 +263,10 @@ int main(int argc, char **argv) {
     return(1);
   }
   printf("OK\r\n-----------------------\r\n");
-  fileclose(fhandle);
+  if (fileclose(fhandle) != 0) {
+    printf("ERROR! File close failed!\r\n");
+    return(1);
+  }
 
   /* open existing file fname */
   printf("9. Open existing file...\r\n");
@@ -302,7 +318,10 @@ int main(int argc, char **argv) {
   }
   printf("OK\r\n-----------------------\r\n");
 
-  fileclose(fhandle);
+  if (fileclose(fhandle) != 0) {
+    printf("ERROR! File close failed!\r\n");
+    return(1);
+  }
 
   /* delete fname */
   printf("11. Delete file...\r\n");
