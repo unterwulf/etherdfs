@@ -378,7 +378,7 @@ static unsigned short sendquery(unsigned char query, unsigned char drive, unsign
 /* reset CF (set on error only) and AX (expected to contain the error code,
  * I might set it later) - I assume a success */
 #define SUCCESSFLAG glob_intregs.w.ax = 0; glob_intregs.w.flags &= ~(INTR_CF);
-#define FAILFLAG(x) glob_intregs.w.ax = x; glob_intregs.w.flags |= INTR_CF;
+#define FAILFLAG(x) {glob_intregs.w.ax = x; glob_intregs.w.flags |= INTR_CF;}
 
 /* this function contains the logic behind INT 2F processing */
 void process2f(void) {
@@ -459,7 +459,7 @@ void process2f(void) {
       /* ES:DI points to the SFT */
       {
       struct sftstruct far *sftptr = MK_FP(glob_intregs.x.es, glob_intregs.x.di);
-      sftptr->handle_count--;
+      if (sftptr->handle_count > 0) sftptr->handle_count--;
       ((unsigned short *)buff)[0] = sftptr->start_sector;
       if (sendquery(AL_CLSFIL, glob_reqdrv, 2, &answer, &ax, 0) == 0) {
         if (*ax != 0) FAILFLAG(*ax);
@@ -516,7 +516,7 @@ void process2f(void) {
       break;
     case AL_WRITEFIL: /*** 09h: WRITEFIL ************************************/
       { /* ES:DI points to the SFT (whose file_pos needs to be updated) */
-        /* CX = number of bytes to read (to be updated with number of bytes actually read) */
+        /* CX = number of bytes to write (to be updated with number of bytes actually written) */
         /* SDA DTA = read buffer */
       struct sftstruct far *sftptr = MK_FP(glob_intregs.x.es, glob_intregs.x.di);
       unsigned short bytesleft, chunklen, written = 0;
@@ -706,10 +706,9 @@ void process2f(void) {
         if (subfunction == AL_SPOPNFIL) {
           glob_intregs.w.cx = ((unsigned short *)answer)[11];
           sftptr->open_mode = glob_sdaptr->spop_mode & 0x7f; /* not super sure about that... this is how PHANTOM.C does it */
-        } else {
-          sftptr->open_mode &= 0xfff0; /* sanitize the open mode */
-          sftptr->open_mode |= 2; /* read/write */
         }
+        sftptr->open_mode &= 0xfff0; /* sanitize the open mode */
+        sftptr->open_mode |= 2; /* read/write */
         if (sftptr->open_mode & 0x8000) {
           /* TODO FIXME no idea what I should do here - PHANTOM talks about set_sft_owner() */
         #if DEBUGLEVEL > 0
