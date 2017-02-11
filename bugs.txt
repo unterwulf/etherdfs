@@ -1,0 +1,18 @@
+EtherDFS -- known bugs
+
+Here I list the few things that I know are going south with EtherDFS.
+
+------------------------------------------------------------------------------
+Copied files lose their timestamps
+
+When you copy a file to an EtherDFS drive, this file will loose its original
+timestamp and appear as being created "now". This is not really an EtherDFS
+bug, but rather a limitation of MS-DOS. I might work around this in some
+future versions.
+------------------------------------------------------------------------------
+MS-DOS 'DIR' displays "0 bytes of free space"
+
+No clue why this happens. FreeDOS does show the correct free space reported
+by EtherDFS. Seems to be a cosmetic glitch. Seen on MS-DOS 5.0, but other
+versions might be impacted as well.
+------------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 EtherDFS changelog history
 
-v0.7 [xxxx-xx-xx]:
+v0.7 [2017-02-11]:
  - MS-DOS compat: flagging newly mapped drive so MS-DOS doesn't ignore it,
  - fixed FindNext behavior so it's compatible with ATTRIB from MS-DOS,
  - implemented the "Special Open" call (used by COPY in MSDOS 5.0 and 6.x),
