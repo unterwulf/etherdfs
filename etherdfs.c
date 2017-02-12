@@ -749,25 +749,28 @@ void process2f(void) {
       (bit 7 of first byte must be set)
       [DTA+15h] = standard directory entry for file (see #01352)
 
-      FindNext is the same, but only SDB should be used to fetch search params
+      FindNext is the same, but only DTA should be used to fetch search params
       */
+      struct sdbstruct far *dta;
 
 #if DEBUGLEVEL > 0
       dbg_msg = glob_sdaptr->fn1;
 #endif
       /* prepare the query buffer (i must provide query's length) */
       if (subfunction == AL_FINDFIRST) {
+        dta = (struct sdbstruct far *)(glob_sdaptr->curr_dta);
         /* FindFirst needs to fetch search arguments from SDA */
         buff[0] = glob_sdaptr->srch_attr; /* file attributes to look for */
         /* copy fn1 (w/o drive) to buff */
         for (i = 2; glob_sdaptr->fn1[i] != 0; i++) buff[i-1] = glob_sdaptr->fn1[i];
-      } else { /* FindNext needs to fetch search arguments from SDB */
-        glob_sdaptr->sdb.dir_entry++; /* FindNext needs to increment dir_entry */
-        ((unsigned short *)buff)[0] = glob_sdaptr->sdb.par_clstr;
-        ((unsigned short *)buff)[1] = glob_sdaptr->sdb.dir_entry;
-        buff[4] = glob_sdaptr->sdb.srch_attr;
+      } else { /* FindNext needs to fetch search arguments from DTA (es:di) */
+        dta = MK_FP(glob_intregs.x.es, glob_intregs.x.di);
+        dta->dir_entry++; /* FindNext needs to increment dir_entry */
+        ((unsigned short *)buff)[0] = dta->par_clstr;
+        ((unsigned short *)buff)[1] = dta->dir_entry;
+        buff[4] = dta->srch_attr;
         /* copy search template to buff */
-        for (i = 0; i < 11; i++) buff[i+5] = glob_sdaptr->sdb.srch_tmpl[i];
+        for (i = 0; i < 11; i++) buff[i+5] = dta->srch_tmpl[i];
         i += 5; /* i must provide the exact query's length */
       }
       /* send query to remote peer and wait for answer */
@@ -783,13 +786,13 @@ void process2f(void) {
         break;
       }
       /* fill in the directory entry 'found_file' (32 bytes)
-       * unsigned char fname[11]
-       * unsigned char fattr (1=RO 2=HID 4=SYS 8=VOL 16=DIR 32=ARCH 64=DEV)
-       * unsigned char f1[10]
-       * unsigned short time_lstupd
-       * unsigned short date_lstupd
-       * unsigned short start_clstr  *optional*
-       * unsigned long fsize
+       * 00h unsigned char fname[11]
+       * 0Bh unsigned char fattr (1=RO 2=HID 4=SYS 8=VOL 16=DIR 32=ARCH 64=DEV)
+       * 0Ch unsigned char f1[10]
+       * 16h unsigned short time_lstupd
+       * 18h unsigned short date_lstupd
+       * 1Ah unsigned short start_clstr  *optional*
+       * 1Ch unsigned long fsize
        */
       copybytes(glob_sdaptr->found_file.fname, answer+1, 11); /* found file name */
       glob_sdaptr->found_file.fattr = answer[0]; /* found file attributes */
@@ -798,22 +801,8 @@ void process2f(void) {
       glob_sdaptr->found_file.start_clstr = 0; /* start cluster (I don't care) */
       glob_sdaptr->found_file.fsize = ((unsigned long *)answer)[4]; /* fsize (word) */
 
-      /* put things into SDB so I can understand where I left should FindNext be called
-       *   unsigned char drv_lett
-       *   unsigned char srch_tmpl[11]
-       *   unsigned char srch_attr
-       *   unsigned short dir_entry
-       *   unsigned short par_clstr
-       *   unsigned char f1[4]
-       */
-      glob_sdaptr->sdb.drv_lett = glob_reqdrv;
-      copybytes(glob_sdaptr->sdb.srch_tmpl, glob_sdaptr->fcb_fn1, 11);
-      glob_sdaptr->sdb.srch_attr = glob_sdaptr->srch_attr;
-      /* zero out dir_entry only on FindFirst (FindNext contains a valid value already) */
-      if (subfunction == AL_FINDFIRST) glob_sdaptr->sdb.dir_entry = 0;
-      glob_sdaptr->sdb.par_clstr = ((unsigned short *)answer)[10];
-
-      /* update the DTA with a valid FindFirst structure (21 bytes)
+      /* put things into DTA so I can understand where I left should FindNext
+       * be called - this shall be a valid FindFirst structure (21 bytes):
        * 00h unsigned char drive letter (7bits, MSB must be set for remote drives)
        * 01h unsigned char search_tmpl[11]
        * 0Ch unsigned char search_attr (1=RO 2=HID 4=SYS 8=VOL 16=DIR 32=ARCH 64=DEV)
@@ -829,10 +818,16 @@ void process2f(void) {
        * 2Fh unsigned short cluster
        * 31h unsigned long file size
        */
-      copybytes(glob_sdaptr->curr_dta, &(glob_sdaptr->sdb), 21); /* first 21 bytes as in SDB */
-      glob_sdaptr->curr_dta[0] |= 128; /* bit 7 set means 'network drive' */
+      /* init some stuff only on FindFirst (FindNext contains valid values already) */
+      if (subfunction == AL_FINDFIRST) {
+        dta->drv_lett = glob_reqdrv | 128; /* bit 7 set means 'network drive' */
+        copybytes(dta->srch_tmpl, glob_sdaptr->fcb_fn1, 11);
+        dta->srch_attr = glob_sdaptr->srch_attr;
+        dta->dir_entry = 0;
+      }
+      dta->par_clstr = ((unsigned short *)answer)[10];
       /* then 32 bytes as in the found_file record */
-      copybytes(glob_sdaptr->curr_dta + 0x15, &(glob_sdaptr->found_file), 32);
+      copybytes(dta + 0x15, &(glob_sdaptr->found_file), 32);
       }
       break;
     case AL_SKFMEND: /*** 21h: SKFMEND **************************************/
