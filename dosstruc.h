@@ -40,6 +40,28 @@ struct cdsstruct {
 }; /* 88 bytes total */
 
 
+/* called 'srchrec' in phantom.c */
+struct sdbstruct {
+  unsigned char drv_lett;
+  unsigned char srch_tmpl[11];
+  unsigned char srch_attr;
+  unsigned short dir_entry;
+  unsigned short par_clstr;
+  unsigned char f1[4];
+};
+
+
+struct foundfilestruct {
+  unsigned char fname[11];
+  unsigned char fattr; /* (1=RO 2=HID 4=SYS 8=VOL 16=DIR 32=ARCH 64=DEVICE) */
+  unsigned char f1[10];
+  unsigned short time_lstupd; /* 16 bits: hhhhhmmm mmmsssss */
+  unsigned short date_lstupd; /* 16 bits: YYYYYYYM MMMDDDDD */
+  unsigned short start_clstr; /* (optional) */
+  unsigned long fsize;
+};
+
+
 /*
  * Pointers to SDA fields. Layout:
  *                             DOS4+   DOS 3, DR-DOS
@@ -64,23 +86,8 @@ struct sdastruct {
   unsigned char f2[106];
   unsigned char fn1[128];
   unsigned char fn2[128];
-  struct {
-    unsigned char drv_lett;
-    unsigned char srch_tmpl[11];
-    unsigned char srch_attr;
-    unsigned short dir_entry;
-    unsigned short par_clstr;
-    unsigned char f1[4];
-  } sdb; /* called 'srchrec' in phantom.c */
-  struct {
-    unsigned char fname[11];
-    unsigned char fattr; /* (1=RO 2=HID 4=SYS 8=VOL 16=DIR 32=ARCH 64=DEVICE) */
-    unsigned char f1[10];
-    unsigned short time_lstupd; /* 16 bits: hhhhhmmm mmmsssss */
-    unsigned short date_lstupd; /* 16 bits: YYYYYYYM MMMDDDDD */
-    unsigned short start_clstr; /* (optional) */
-    unsigned long fsize;
-  } found_file;
+  struct sdbstruct sdb;
+  struct foundfilestruct found_file;
   struct cdsstruct drive_cdscopy; /* 88 bytes total */
   unsigned char fcb_fn1[11];
   unsigned char f3;
