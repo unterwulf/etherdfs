@@ -849,7 +849,7 @@ void process2f(void) {
 
 /* this function is hooked on INT 2Fh */
 void __interrupt __far inthandler(union INTPACK r) {
-  /* insert a static code signature so I can detect later if I am loaded already,
+  /* insert a static code signature so I can reliably patch myself later,
    * this will also contain the DS segment to use and actually set it */
   _asm {
     jmp SKIPTSRSIG
@@ -875,6 +875,16 @@ void __interrupt __far inthandler(union INTPACK r) {
   dbg_VGA[dbg_startoffset + dbg_xpos++] = 0x1e00 | (dbg_hexc[r.h.al & 0xf]);
   dbg_VGA[dbg_startoffset + dbg_xpos++] = 0;
 #endif
+
+  /* is it a multiplex call for me? */
+  if (r.h.ah == glob_multiplexid) {
+    if (r.h.al == 0) { /* install check */
+      r.h.al = 0xff;    /* 'installed' */
+      r.w.bx = 0x4d86;  /* MV          */
+      r.w.cx = 0x7e1;   /* 2017        */
+      return;
+    }
+  }
 
   /* if not related to a redirector function (AH=11h), or the function is
    * an 'install check' (0), or the function is over our scope (2Eh), or it's
@@ -1162,24 +1172,6 @@ static void outmsg(char *s) {
   }
 }
 
-
-/* returns 0 if ethdrive is not found in memory, non-zero otherwise
-   NOTE: checking for self won't work if another TSR chained int 2F ! I should
-         rather do some finger matching through an AX=2F00 call...
-         On the other hand, packet driver access will be refused the second
-         time anyway, so detecting self is a purely cosmetic issue. */
-static int tsrpresent(void) {
-  unsigned char far *ptr = (unsigned char far *)MK_FP(glob_prev_2f_handler_seg, glob_prev_2f_handler_off) + 23; /* the interrupt handler's signature appears at offset 23 (this might change at each source code modification) */
-
-  /*{ unsigned short far *VGA = (unsigned short far *)(0xB8000000l);
-  for (x = 0; x < 512; x++) VGA[240 + ((x >> 6) * 80) + (x & 63)] = 0x1f00 | ptr[x]; }*/
-
-  /* look for the "MVethd" signature */
-  if ((ptr[0] != 'M') || (ptr[1] != 'V') || (ptr[2] != 'e') || (ptr[3] != 't')
-   || (ptr[4] != 'h') || (ptr[5] != 'd')) return(0);
-  return(1);
-}
-
 /* zero out an object of l bytes */
 static void zerobytes(void *obj, unsigned short l) {
   unsigned char *o = obj;
@@ -1399,11 +1391,52 @@ static int updatetsrds(void) {
   return(0);
 }
 
+/* scans the 2Fh interrupt for some available 'multiplex id' in the range
+ * C0..FF. also checks for EtherDFS presence at the same time. returns:
+ *  - the available id if found
+ *  - the id of the already-present etherdfs instance
+ *  - 0 if no available id found
+ * presentflag set to 0 if no etherdfs found loaded, non-zero otherwise. */
+static unsigned char findfreemultiplex(unsigned char *presentflag) {
+  unsigned char id = 0, freeid = 0, pflag = 0;
+  _asm {
+    mov id, 0C0h /* start scanning at C0h */
+    checkid:
+    xor al, al   /* subfunction is 'installation check' (00h) */
+    mov ah, id
+    int 2Fh
+    /* is it free? (AL == 0) */
+    test al, al
+    jnz notfree    /* not free - is it me perhaps? */
+    mov freeid, ah /* it's free - remember it, I may use it myself soon */
+    jmp checknextid
+    notfree:
+    /* is it me? (AL=FF + BX=4D86 CX=7E1 [MV 2017]) */
+    cmp al, 0ffh
+    jne checknextid
+    cmp bx, 4d86h
+    jne checknextid
+    cmp cx, 7e1h
+    jne checknextid
+    /* if here, then it's me... */
+    mov ah, id
+    mov freeid, ah
+    mov pflag, 1
+    jmp gameover
+    checknextid:
+    /* if not me, then check next id */
+    inc id
+    jnz checkid /* if id is zero, then all range has been covered (C0..FF) */
+    gameover:
+  }
+  *presentflag = pflag;
+  return(freeid);
+}
 
 int main(int argc, char **argv) {
   struct argstruct args;
   struct cdsstruct far *cds;
-  unsigned char dosver = 0;
+  unsigned char tmpflag = 0;
   unsigned short volatile newdataseg; /* 'volatile' just in case the compiler would try to optimize it out, since I set it through in-line assembly */
 
   /* parse command-line arguments */
@@ -1419,13 +1452,13 @@ int main(int argc, char **argv) {
   _asm {
     mov ax, 3306h
     int 21h
-    mov dosver, bl
+    mov tmpflag, bl
     inc al /* if AL was 0xFF ("unsupported function"), it is 0 now */
     jnz done
-    mov dosver, 0 /* if AL is 0 (hence was 0xFF), set dosver to 0 */
+    mov tmpflag, 0 /* if AL is 0 (hence was 0xFF), set dosver to 0 */
     done:
   }
-  if (dosver < 5) {
+  if (tmpflag < 5) { /* tmpflag contains DOS version or 0 for 'unknown' */
     #include "msg\\unsupdos.c"
     return(1);
   }
@@ -1444,8 +1477,12 @@ int main(int argc, char **argv) {
   }
 
   /* is the TSR installed already? */
-  if (tsrpresent() != 0) {
+  glob_multiplexid = findfreemultiplex(&tmpflag);
+  if (tmpflag != 0) { /* already loaded */
     #include "msg\\alrload.c"
+    return(1);
+  } else if (glob_multiplexid == 0) { /* no free multiplex id found */
+    #include "msg\\nomultpx.c"
     return(1);
   }
 

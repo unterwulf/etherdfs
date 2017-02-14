@@ -83,7 +83,9 @@ int main(void) {
 
   genmsg("msg\\unsupdos.c", "Unsupported DOS version! etherdfs requires MS-DOS 5+.\r\n");
 
-  genmsg("msg\\alrload.c", "etherdfs is already installed and cannot be loaded twice.\r\n");
+  genmsg("msg\\alrload.c", "EtherDFS is already installed and cannot be loaded twice.\r\n");
+
+  genmsg("msg\\nomultpx.c", "Failed to find an available INT 2F multiplex id.\r\nYou may have loaded too many TSRs already.\r\n");
 
   genmsg("msg\\mapfail.c",
     "Unable to activate the local drive mapping. You are either using an\r\n"
@@ -102,9 +104,9 @@ int main(void) {
 
   genmsg("msg\\pktdfail.c", "Packet driver initialization failed.\r\n");
 
-  genmsg("msg\\nosrvfnd.c", "No etherdfs server found on the LAN (not for requested drive at least).\r\n");
+  genmsg("msg\\nosrvfnd.c", "No EtherSRV server found on the LAN (not for requested drive at least).\r\n");
 
-  genmsg("msg\\instlled.c", "etherdfs installed (local MAC ");
+  genmsg("msg\\instlled.c", "EtherDFS installed (local MAC ");
 
   genmsg("msg\\pktdrvat.c", ", pktdrvr at INT ");
 

@@ -61,6 +61,9 @@ static unsigned short glob_prev_2f_handler_off; /* 2F handler (so I can call */
 static unsigned short glob_oldstack_seg;
 static unsigned short glob_oldstack_off;
 
+/* the INT 2F "multiplex id" registerd by EtherDFS */
+static unsigned char glob_multiplexid;
+
 /* an INTPACK structure used to store registers as set when INT2F is called */
 static union INTPACK glob_intregs;
 
