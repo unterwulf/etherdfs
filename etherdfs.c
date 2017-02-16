@@ -317,8 +317,8 @@ static unsigned short sendquery(unsigned char query, unsigned char drive, unsign
   /* resolve remote drive or die (for now it's easy since only a single drive
    * can possibly be configured, but future versions shall support multiple
    * drive mappings */
-  if (drive == glob_ldrv) {
-    drive = glob_rdrv;
+  if (drive == glob_data.ldrv) {
+    drive = glob_data.rdrv;
   } else { /* drive not found */
     return(0);
   }
@@ -884,6 +884,16 @@ void __interrupt __far inthandler(union INTPACK r) {
       r.w.cx = 0x7e1;   /* 2017        */
       return;
     }
+    if ((r.h.al == 1) && (r.x.cx == 0x4d86)) { /* get shared data ptr (AX=0, ptr under BX:CX) */
+      _asm {
+        push ds
+        pop glob_reqstkword
+      }
+      r.w.ax = 0; /* zero out AX */
+      r.w.bx = glob_reqstkword; /* ptr returned at BX:CX */
+      r.w.cx = FP_OFF(&glob_data);
+      return;
+    }
   }
 
   /* if not related to a redirector function (AH=11h), or the function is
@@ -932,13 +942,13 @@ void __interrupt __far inthandler(union INTPACK r) {
         dbg_VGA[dbg_startoffset + dbg_xpos++] = 0x6e00 | ('A' + glob_reqdrv);
         dbg_VGA[dbg_startoffset + dbg_xpos++] = 0x6e00 | ':';
       #endif
-        if (glob_reqdrv != glob_ldrv) goto CHAINTOPREVHANDLER;
+        if (glob_reqdrv != glob_data.ldrv) goto CHAINTOPREVHANDLER;
         if (r.h.al != AL_DISKSPACE) gen_fcbname_from_path();
         }
         break;
     }
   }
-  if (glob_reqdrv != glob_ldrv) goto CHAINTOPREVHANDLER;
+  if (glob_reqdrv != glob_data.ldrv) goto CHAINTOPREVHANDLER;
 
   /* copy interrupt registers into glob_intregs so the int handler can access them without using any stack */
   copybytes(&glob_intregs, &r, sizeof(union INTPACK));
@@ -971,7 +981,7 @@ void __interrupt __far inthandler(union INTPACK r) {
 
   /* hand control to the previous INT 2F handler */
   CHAINTOPREVHANDLER:
-  _mvchain_intr(MK_FP(glob_prev_2f_handler_seg, glob_prev_2f_handler_off));
+  _mvchain_intr(MK_FP(glob_data.prev_2f_handler_seg, glob_data.prev_2f_handler_off));
 }
 
 
@@ -1007,7 +1017,7 @@ static int pktdrv_accesstype(void) {
     call dword ptr glob_pktdrv_pktcall
     /* get CF state - reset cflag if CF clear, and get pkthandle from AX */
     jc badluck   /* Jump if Carry */
-    mov glob_pktdrv_pkthandle, ax /* Pkt handle should be in AX */
+    mov word ptr [glob_data + GLOB_DATOFF_PKTHANDLE], ax /* Pkt handle should be in AX */
     mov cflag, 0
     badluck:
   }
@@ -1020,7 +1030,7 @@ static int pktdrv_accesstype(void) {
 static void pktdrv_getaddr(unsigned char *dst) {
   _asm {
     mov ah, 6                       /* subfunction: get_addr() */
-    mov bx, glob_pktdrv_pkthandle;  /* handle */
+    mov bx, word ptr [glob_data + GLOB_DATOFF_PKTHANDLE];  /* handle */
     push ds                         /* write segment of dst into es */
     pop es
     mov di, dst                     /* offset of dst (in small mem model dst IS an offset) */
@@ -1035,7 +1045,7 @@ static void pktdrv_getaddr(unsigned char *dst) {
 
 
 static int pktdrv_init(unsigned short pktintparam) {
-  unsigned short far *intvect = (unsigned short far *)MK_FP(0, pktintparam * 4);
+  unsigned short far *intvect = (unsigned short far *)MK_FP(0, pktintparam << 2);
   unsigned short pktdrvfuncoffs = *intvect;
   unsigned short pktdrvfuncseg = *(intvect+1);
   unsigned short rseg = 0, roff = 0;
@@ -1062,12 +1072,12 @@ static int pktdrv_init(unsigned short pktintparam) {
   pktdrvfunc += 3; /* skip three bytes of executable code */
   for (i = 0; i < 8; i++) if (sig[i] != pktdrvfunc[i]) return(-1);
 
-  glob_pktdrv_pktint = pktintparam;
+  glob_data.pktint = pktintparam;
 
   /* fetch the vector of the pktdrv interrupt and save it for later */
   _asm {
     mov ah, 35h /* AH=GetVect */
-    mov al, glob_pktdrv_pktint; /* AL=int number */
+    mov al, byte ptr [glob_data] + GLOB_DATOFF_PKTINT; /* AL=int number */
     push es /* save ES and BX (will be overwritten) */
     push bx
     int 21h
@@ -1076,16 +1086,18 @@ static int pktdrv_init(unsigned short pktintparam) {
     pop bx
     pop es
   }
-  glob_pktdrv_pktcall = MK_FP(rseg, roff);
+  glob_pktdrv_pktcall = rseg;
+  glob_pktdrv_pktcall <<= 16;
+  glob_pktdrv_pktcall |= roff;
 
   return(pktdrv_accesstype());
 }
 
 
-static void pktdrv_free(void) {
+static void pktdrv_free(unsigned long pktcall) {
   _asm {
     mov ah, 3
-    mov bx, glob_pktdrv_pkthandle
+    mov bx, word ptr [glob_data + GLOB_DATOFF_PKTHANDLE]
     /* int to variable vector is a mess, so I have fetched its vector myself
      * and pushf + cli + call far it now to simulate a regular int */
     pushf
@@ -1226,6 +1238,7 @@ static int string2mac(unsigned char *d, char *mac) {
 
 #define ARGFL_QUIET 1
 #define ARGFL_AUTO 2
+#define ARGFL_UNLOAD 4
 
 /* a structure used to pass and decode arguments between main() and parseargv() */
 struct argstruct {
@@ -1241,6 +1254,19 @@ struct argstruct {
 static int parseargv(struct argstruct *args) {
   /* Syntax: etherdfs SRVMAC rdrive:ldrive [options] */
   int i;
+  /* if only one argument given, it must be /u */
+  if (args->argc == 2) {
+    /* must be two characters long, and start with a '/' */
+    if ((args->argv[1][0] != '/') || (args->argv[1][1] == 0)  || (args->argv[1][2] != 0)) return(-1);
+    /* is it /u ? */
+    if ((args->argv[1][1] == 'u') || (args->argv[1][1] == 'U')) {
+      args->flags = ARGFL_UNLOAD;
+      return(0);
+    }
+    /* otherwise I don't care */
+    return(-1);
+  }
+
   /* I require at least 2 arguments */
   if (args->argc < 3) return(-1);
   /* read the srv mac address, unless it's "::" (auto) */
@@ -1252,8 +1278,8 @@ static int parseargv(struct argstruct *args) {
 
   /* is rdrive:ldrive option sane? */
   if ((args->argv[2][0] < 'A') || (args->argv[2][1] != '-') || (args->argv[2][2] < 'A') || (args->argv[2][3] != 0)) return(-2);
-  glob_rdrv = DRIVETONUM(args->argv[2][0]);
-  glob_ldrv = DRIVETONUM(args->argv[2][2]);
+  glob_data.rdrv = DRIVETONUM(args->argv[2][0]);
+  glob_data.ldrv = DRIVETONUM(args->argv[2][2]);
   /* iterate through options, if any */
   for (i = 3; i < args->argc; i++) {
     char opt;
@@ -1463,6 +1489,143 @@ int main(int argc, char **argv) {
     return(1);
   }
 
+  /* is it all about unloading myself? */
+  if ((args.flags & ARGFL_UNLOAD) != 0) {
+    unsigned char etherdfsid, pktint;
+    unsigned short myseg, myoff, myhandle, mydataseg;
+    unsigned long pktdrvcall;
+    struct tsrshareddata far *tsrdata;
+    unsigned char far *int2fptr;
+
+    /* am I loaded at all? */
+    etherdfsid = findfreemultiplex(&tmpflag);
+    if (tmpflag == 0) { /* not loaded, cannot unload */
+      #include "msg\\notload.c"
+      return(1);
+    }
+    /* am I still at the top of the int 2Fh chain? */
+    _asm {
+      /* save AX, BX and ES */
+      push ax
+      push bx
+      push es
+      /* fetch int vector */
+      mov ax, 352Fh  /* AH=35h 'GetVect' for int 2Fh */
+      int 21h
+      mov myseg, es
+      mov myoff, bx
+      /* restore AX, BX and ES */
+      pop es
+      pop bx
+      pop ax
+    }
+    int2fptr = (unsigned char far *)MK_FP(myseg, myoff) + 23; /* the interrupt handler's signature appears at offset 23 (this might change at each source code modification) */
+    /* look for the "MVethd" signature */
+    if ((int2fptr[0] != 'M') || (int2fptr[1] != 'V') || (int2fptr[2] != 'e') || (int2fptr[3] != 't')
+     || (int2fptr[4] != 'h') || (int2fptr[5] != 'd')) {
+      #include "msg\\othertsr.c";
+      return(1);
+    }
+    /* get the ptr to TSR's data */
+    _asm {
+      push ax
+      push bx
+      push cx
+      pushf
+      mov ah, etherdfsid
+      mov al, 1
+      mov cx, 4d86h
+      mov myseg, 0ffffh
+      int 2Fh /* AX should be 0, and BX:CX contains the address */
+      test ax, ax
+      jnz fail
+      mov myseg, bx
+      mov myoff, cx
+      mov mydataseg, dx
+      fail:
+      popf
+      pop cx
+      pop bx
+      pop ax
+    }
+    if (myseg == 0xffffu) {
+      #include "msg\\tsrcomfa.c"
+      return(1);
+    }
+    tsrdata = MK_FP(myseg, myoff);
+    mydataseg = myseg;
+    /* restore previous int 2f handler (under DS:DX, AH=25h, INT 21h)*/
+    myseg = tsrdata->prev_2f_handler_seg;
+    myoff = tsrdata->prev_2f_handler_off;
+    _asm {
+      /* save AX, DS and DX */
+      push ax
+      push ds
+      push dx
+      /* set DS:DX */
+      mov ax, myseg
+      push ax
+      pop ds
+      mov dx, myoff
+      /* call INT 21h,25h for int 2Fh */
+      mov ax, 252Fh
+      int 21h
+      /* restore AX, DS and DX */
+      pop dx
+      pop ds
+      pop ax
+    }
+    /* get the address of the packet driver routine */
+    pktint = tsrdata->pktint;
+    _asm {
+      /* save AX, BX and ES */
+      push ax
+      push bx
+      push es
+      /* fetch int vector */
+      mov ah, 35h  /* AH=35h 'GetVect' */
+      mov al, pktint /* interrupt */
+      int 21h
+      mov myseg, es
+      mov myoff, bx
+      /* restore AX, BX and ES */
+      pop es
+      pop bx
+      pop ax
+    }
+    pktdrvcall = myseg;
+    pktdrvcall <<= 16;
+    pktdrvcall |= myoff;
+    /* unregister packet driver */
+    myhandle = tsrdata->pkthandle;
+    _asm {
+      /* save AX and BX */
+      push ax
+      push bx
+      /* prepare the release_type() call */
+      mov ah, 3 /* release_type() */
+      mov bx, myhandle
+      /* call the pktdrv int */
+      /* int to variable vector is a mess, so I have fetched its vector myself
+       * and pushf + cli + call far it now to simulate a regular int */
+      pushf
+      cli
+      call dword ptr pktdrvcall
+      /* restore AX and BX */
+      pop bx
+      pop ax
+    }
+    /* set drive as 'not available' */
+    cds = getcds(tsrdata->ldrv);
+    if (cds != NULL) cds->flags = 0;
+    /* free TSR's data/stack seg and its PSP */
+    freeseg(mydataseg);
+    freeseg(tsrdata->pspseg);
+    /* all done */
+    #include "msg\\unloaded.c"
+    return(0);
+  }
+
   /* remember current int 2f handler, we might over-write it soon (also I
    * use it to see if I'm already loaded) */
   _asm {
@@ -1470,8 +1633,8 @@ int main(int argc, char **argv) {
     push es /* save ES and BX (will be overwritten) */
     push bx
     int 21h
-    mov glob_prev_2f_handler_seg, es
-    mov glob_prev_2f_handler_off, bx
+    mov word ptr [glob_data + GLOB_DATOFF_PREV2FHANDLERSEG], es
+    mov word ptr [glob_data + GLOB_DATOFF_PREV2FHANDLEROFF], bx
     pop bx
     pop es
   }
@@ -1487,7 +1650,7 @@ int main(int argc, char **argv) {
   }
 
   /* enable the new drive */
-  cds = getcds(glob_ldrv);
+  cds = getcds(glob_data.ldrv);
   if (cds == NULL) {
     #include "msg\\mapfail.c"
     return(1);
@@ -1549,7 +1712,7 @@ int main(int argc, char **argv) {
   glob_sdaptr = getsda();
 
   /* init the packet driver interface */
-  glob_pktdrv_pktint = 0;
+  glob_data.pktint = 0;
   if (args.pktint == 0) { /* detect first packet driver within int 60h..80h */
     int i;
     for (i = 0x60; i <= 0x80; i++) {
@@ -1559,7 +1722,7 @@ int main(int argc, char **argv) {
     pktdrv_init(args.pktint);
   }
   /* has it succeeded? */
-  if (glob_pktdrv_pktint == 0) {
+  if (glob_data.pktint == 0) {
     #include "msg\\pktdfail.c"
     freeseg(newdataseg);
     return(1);
@@ -1573,9 +1736,9 @@ int main(int argc, char **argv) {
     /* set (temporarily) glob_rmac to broadcast */
     for (i = 0; i < 6; i++) GLOB_RMAC[i] = 0xff;
     /* send a discovery frame that will update glob_rmac */
-    if (sendquery(AL_DISKSPACE, glob_ldrv, 0, &answer, &ax, 1) != 6) {
+    if (sendquery(AL_DISKSPACE, glob_data.ldrv, 0, &answer, &ax, 1) != 6) {
       #include "msg\\nosrvfnd.c"
-      pktdrv_free(); /* free the pkt drv and quit */
+      pktdrv_free(glob_pktdrv_pktcall); /* free the pkt drv and quit */
       freeseg(newdataseg);
       return(1);
     }
@@ -1596,7 +1759,7 @@ int main(int argc, char **argv) {
     buff[17] = '$';
     outmsg(buff);
     #include "msg\\pktdrvat.c"
-    byte2hex(buff, glob_pktdrv_pktint);
+    byte2hex(buff, glob_data.pktint);
     buff[2] = '$';
     outmsg(buff);
     buff[0] = ')';
@@ -1605,7 +1768,7 @@ int main(int argc, char **argv) {
     buff[3] = ' ';
     buff[4] = '$';
     outmsg(buff);
-    buff[0] = 'A' + glob_ldrv;
+    buff[0] = 'A' + glob_data.ldrv;
     buff[1] = '$';
     outmsg(buff);
     buff[0] = ':';
@@ -1616,7 +1779,7 @@ int main(int argc, char **argv) {
     buff[5] = '[';
     buff[6] = '$';
     outmsg(buff);
-    buff[0] = 'A' + glob_rdrv;
+    buff[0] = 'A' + glob_data.rdrv;
     buff[1] = '$';
     outmsg(buff);
     buff[0] = ':';
@@ -1641,12 +1804,12 @@ int main(int argc, char **argv) {
   _asm {
     mov ah, 62h          /* get current PSP address */
     int 21h              /* returns the segment of PSP in BX */
-    mov glob_pspseg, bx  /* copy PSP segment to glob_pspseg */
+    mov word ptr [glob_data + GLOB_DATOFF_PSPSEG], bx  /* copy PSP segment to glob_pspseg */
   }
 
   /* free the environment (env segment is at offset 2C of the PSP) */
   _asm {
-    mov es, glob_pspseg /* load ES with PSP's segment */
+    mov es, word ptr [glob_data + GLOB_DATOFF_PSPSEG] /* load ES with PSP's segment */
     mov es, es:[2Ch]    /* get segment of the env block */
     mov ah, 49h         /* free memory (DOS 2+) */
     int 21h

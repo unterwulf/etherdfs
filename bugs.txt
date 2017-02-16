@@ -25,7 +25,7 @@ remote drive.
 
 ==============================================================================
 
-Copied files lose their timestamps.
+Copied files loose their timestamps.
 
 When you copy a file to an EtherDFS drive, this file will loose its original
 timestamp and appear as being created "now". This is not really an EtherDFS

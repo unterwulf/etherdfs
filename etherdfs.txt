@@ -3,13 +3,6 @@
                        http://etherdfs.sourceforge.net
 
 
-                +---------[ WARNING: BETA SOFTWARE ]---------+
-                | This software is currently in beta state.  |
-                | Do not expect consistency. Testing purpose |
-                | only!                                      |
-                +--------------------------------------------+
-
-
 EtherDFS is an 'installable filesystem' TSR for DOS. It maps a drive from a
 remote computer (typically Linux-based) to a local drive letter, using raw
 ethernet frames to communicate. For years, I was using LapLink to transfer
@@ -31,6 +24,7 @@ is that EtherDFS is unable to communicate outside of a single LAN.
 
 Syntax:
   etherdfs SRVMAC rdrive-ldrive [options]
+  etherdfs /u
 
   where:
   SRVMAC  is the MAC address of the file server EtherDFS will connect to. You
@@ -43,6 +37,7 @@ Available options:
   /p=XX   use the network packet driver XX (autodetected in the range 60h..80h
           if not specified)
   /q      quiet mode: print nothing on screen if loaded successfully
+  /u      unload EtherDFS from memory
 
 Examples:
   etherdfs 6d:4f:4a:4d:49:52 C-F /q
@@ -61,13 +56,6 @@ EtherDFS hardware/software requirements:
 
 ethersrv, on the other hand, requires a reasonably modern Linux system.
 Future versions will probably provide a DOS version of ethersrv, too.
-
-
-===[ How to uninstall EtherDFS from memory ]==================================
-
-EtherDFS cannot be removed from memory, nor disabled, sorry. This is a feature
-that might perhaps be developed in future versions, but for now I do not
-consider this a priority nor a feature essential to the common use case.
 
 
 ===[ Multiple drives ]========================================================

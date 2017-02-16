@@ -70,10 +70,12 @@ int main(void) {
     "A network drive for DOS running over raw ethernet\r\n"
     "\r\n"
     "Usage: etherdfs SRVMAC rdrive-ldrive [options]\r\n"
+    "       etherdfs /u"
     "\r\n"
     "Options:\r\n"
     "  /p=XX   use packet driver at interrupt XX (autodetect otherwise)\r\n"
     "  /q      quiet mode (print nothing if loaded successfully)\r\n"
+    "  /u      unload EtherDFS from memory"
     "\r\n"
     "Use '::' as SRVMAC for server auto-discovery.\r\n"
     "\r\n"
@@ -85,7 +87,15 @@ int main(void) {
 
   genmsg("msg\\alrload.c", "EtherDFS is already installed and cannot be loaded twice.\r\n");
 
+  genmsg("msg\\notload.c", "EtherDFS is not loaded, so it cannot be unloaded.\r\n");
+
+  genmsg("msg\\tsrcomfa.c", "Communication with the TSR failed.\r\n");
+
   genmsg("msg\\nomultpx.c", "Failed to find an available INT 2F multiplex id.\r\nYou may have loaded too many TSRs already.\r\n");
+
+  genmsg("msg\\othertsr.c", "EtherDFS cannot be unloaded because another TSR hooked its interrupt handler.\r\n");
+
+  genmsg("msg\\unloaded.c", "EtherDFS unloaded successfully.\r\n");
 
   genmsg("msg\\mapfail.c",
     "Unable to activate the local drive mapping. You are either using an\r\n"

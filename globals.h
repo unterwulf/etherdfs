@@ -27,16 +27,31 @@ static unsigned char dbg_hexc[16] = "0123456789ABCDEF";
 #define dbg_startoffset 80*16
 #endif
 
-static unsigned char glob_ldrv;    /* local drive letter (0=A:, 1=B:, etc) */
-static unsigned char glob_rdrv;    /* remote drive (0=A:, 1=B:, etc) */
+/* whenever the tsrshareddata structure changes, offsets below MUST be
+ * adjusted (these are required by assembly routines) */
+#define GLOB_DATOFF_PREV2FHANDLERSEG 0
+#define GLOB_DATOFF_PREV2FHANDLEROFF 2
+#define GLOB_DATOFF_PSPSEG 4
+#define GLOB_DATOFF_PKTHANDLE 6
+#define GLOB_DATOFF_PKTINT 8
+static struct tsrshareddata {
+/*offs*/
+/*  0 */ unsigned short prev_2f_handler_seg; /* seg:off of the previous 2F handler */
+/*  2 */ unsigned short prev_2f_handler_off; /* (so I can call it for all queries  */
+                                            /* that do not relate to my drive     */
+/*  4 */ unsigned short pspseg;    /* segment of the program's PSP block */
+/*  6 */ unsigned short pkthandle; /* handler returned by the packet driver */
+/*  8 */ unsigned char pktint;     /* software interrupt of the packet driver */
+
+         unsigned char ldrv;    /* local drive letter (0=A:, 1=B:, etc) */
+         unsigned char rdrv;    /* remote drive (0=A:, 1=B:, etc) */
+} glob_data;
 
 /* global variables related to packet driver management and handling frames */
 static unsigned char glob_pktdrv_recvbuff[FRAMESIZE];
 static signed short volatile glob_pktdrv_recvbufflen; /* length of the frame in buffer, 0 means "free", and neg value means "awaiting" */
-static unsigned short glob_pktdrv_pkthandle;  /* handler returned by the packet driver */
 static unsigned char glob_pktdrv_sndbuff[FRAMESIZE]; /* this not only is my send-frame buffer, but I also use it to store permanently lmac, rmac, ethertype and PROTOVER at proper places */
-static unsigned char glob_pktdrv_pktint;      /* software interrupt of the packet driver */
-static void (interrupt far *glob_pktdrv_pktcall)(); /* vector address of the pktdrv interrupt */
+static unsigned long glob_pktdrv_pktcall;     /* vector address of the pktdrv interrupt */
 
 /* a few definitions for data that points to my sending buffer */
 #define GLOB_LMAC (glob_pktdrv_sndbuff + 6) /* local MAC address */
@@ -49,13 +64,6 @@ static unsigned char glob_reqdrv;  /* the requested drive, set by the INT 2F *
 static unsigned short glob_reqstkword; /* WORD saved from the stack (used by SETATTR) */
 static struct sdastruct far *glob_sdaptr; /* pointer to DOS SDA (set by main() at *
                                            * startup, used later by process2f()   */
-
-static unsigned short glob_pspseg; /* segment of the program's PSP block */
-
-static unsigned short glob_prev_2f_handler_seg; /* seg:off of the previous   */
-static unsigned short glob_prev_2f_handler_off; /* 2F handler (so I can call */
-                                                /* it for all queries that   */
-                                                /* do not relate to my drive */
 
 /* seg:off addresses of the old (DOS) stack */
 static unsigned short glob_oldstack_seg;

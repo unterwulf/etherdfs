@@ -2,6 +2,7 @@ EtherDFS changelog history
 
 v0.8 [xxxx-xx-xx]:
  - improved self-detection to avoid loading EtherDFS twice,
+ - added unloading support (/u),
  - ...
 
 v0.7 [2017-02-11]:
