@@ -3,6 +3,7 @@ EtherDFS changelog history
 v0.8 [xxxx-xx-xx]:
  - improved self-detection to avoid loading EtherDFS twice,
  - added unloading support (/u),
+ - fixed a FindFirst regression (fixes usage under 4DOS),
  - ...
 
 v0.7 [2017-02-11]:

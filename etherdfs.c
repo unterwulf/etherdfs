@@ -763,6 +763,7 @@ void process2f(void) {
         buff[0] = glob_sdaptr->srch_attr; /* file attributes to look for */
         /* copy fn1 (w/o drive) to buff */
         for (i = 2; glob_sdaptr->fn1[i] != 0; i++) buff[i-1] = glob_sdaptr->fn1[i];
+        i--; /* adjust i because its one too much otherwise */
       } else { /* FindNext needs to fetch search arguments from DTA (es:di) */
         dta = MK_FP(glob_intregs.x.es, glob_intregs.x.di);
         dta->dir_entry++; /* FindNext needs to increment dir_entry */
