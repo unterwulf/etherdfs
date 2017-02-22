@@ -48,8 +48,7 @@
 
 /* copies l bytes from *s to *d */
 static void copybytes(void far *d, void far *s, unsigned int l) {
-  for (;;) {
-    if (l == 0) break;
+  while (l != 0) {
     l--;
     *(unsigned char far *)d = *(unsigned char far *)s;
     d = (unsigned char far *)d + 1;
@@ -132,36 +131,6 @@ void __declspec(naked) far pktdrv_recv(void) {
     pop ds /* restore ds */
     retf
   }
-}
-
-
-static void pktdrv_send(void *buffptr, unsigned short bufferlen) {
-  _asm {
-    mov ah, 4h  /* SendPkt */
-    mov cx, bufferlen
-    push si
-    mov si, buffptr /* DS:SI should point to the buff, I do not modify DS
-                     * because I assume the buffer is already in my data
-                     * segment (small memory model) */
-    /* int to variable vector is a mess, so I have fetched its vector myself
-     * and pushf + cli + call far it now to simulate a regular int */
-    pushf
-    cli
-    call dword ptr glob_pktdrv_pktcall
-    /* restore SI */
-    pop si
-  }
-
-#if DEBUGLEVEL > 1
-  { /* This block is for DEBUG purpose only - print the frame that is about to be sent on screen */
-    int i;
-    for (i = 0; i < 26; i++) {
-      dbg_VGA[240+i*3] = 0x1700 | dbg_hexc[((unsigned char *)buffptr)[i] >> 4];
-      dbg_VGA[241+i*3] = 0x1700 | dbg_hexc[((unsigned char *)buffptr)[i] & 15];
-      dbg_VGA[242+i*3] = 0x1700;
-    }
-  }
-#endif
 }
 
 
@@ -341,12 +310,36 @@ static unsigned short sendquery(unsigned char query, unsigned char drive, unsign
    * the query again and again, up to 5 times. the RTC clock at 0x46C is used
    * as a timing reference. */
   glob_pktdrv_recvbufflen = 0; /* mark the receiving buffer empty */
-  for (count = 0; count < 5; count++) {
+  for (count = 5; count != 0; count--) { /* faster than count=0; count<5; count++ */
     /* send the query frame out */
-    pktdrv_send(glob_pktdrv_sndbuff, bufflen + 60);
-    t = *rtc;
+    _asm {
+      /* save registers */
+      push ax
+      push cx
+      push dx /* may be changed by the packet driver (set to errno) */
+      push si
+      pushf /* must be last register pushed (expected by 'call') */
+      /* */
+      mov ah, 4h   /* SendPkt */
+      mov cx, bufflen
+      add cx, 60   /* I send 60 bytes more than what bufflen indicates */
+      mov si, offset glob_pktdrv_sndbuff /* DS:SI points to buff, I do not
+                                 modify DS because the buffer should already
+                                 be in my data segment (small memory model) */
+      /* int to variable vector is a mess, so I have fetched its vector myself
+       * and pushf + cli + call far it now to simulate a regular int */
+      /* pushf -- already on the stack */
+      cli
+      call dword ptr glob_pktdrv_pktcall
+      /* restore registers (but not pushf, already restored by call) */
+      pop si
+      pop dx
+      pop cx
+      pop ax
+    }
 
     /* wait for (and validate) the answer frame */
+    t = *rtc;
     for (;;) {
       int i;
       if ((t != *rtc) && (t+1 != *rtc) && (*rtc != 0)) break; /* timeout, retry */
@@ -766,7 +759,6 @@ void process2f(void) {
         i--; /* adjust i because its one too much otherwise */
       } else { /* FindNext needs to fetch search arguments from DTA (es:di) */
         dta = MK_FP(glob_intregs.x.es, glob_intregs.x.di);
-        dta->dir_entry++; /* FindNext needs to increment dir_entry */
         ((unsigned short *)buff)[0] = dta->par_clstr;
         ((unsigned short *)buff)[1] = dta->dir_entry;
         buff[4] = dta->srch_attr;
@@ -775,7 +767,7 @@ void process2f(void) {
         i += 5; /* i must provide the exact query's length */
       }
       /* send query to remote peer and wait for answer */
-      if (sendquery(subfunction, glob_reqdrv, i, &answer, &ax, 0) != 22) {
+      if (sendquery(subfunction, glob_reqdrv, i, &answer, &ax, 0) != 24) {
         if (subfunction == AL_FINDFIRST) {
           FAILFLAG(2); /* a failed findfirst returns error 2 (file not found) */
         } else {
@@ -824,9 +816,9 @@ void process2f(void) {
         dta->drv_lett = glob_reqdrv | 128; /* bit 7 set means 'network drive' */
         copybytes(dta->srch_tmpl, glob_sdaptr->fcb_fn1, 11);
         dta->srch_attr = glob_sdaptr->srch_attr;
-        dta->dir_entry = 0;
       }
       dta->par_clstr = ((unsigned short *)answer)[10];
+      dta->dir_entry = ((unsigned short *)answer)[11];
       /* then 32 bytes as in the found_file record */
       copybytes(dta + 0x15, &(glob_sdaptr->found_file), 32);
       }

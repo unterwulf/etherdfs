@@ -24,7 +24,8 @@ offs|field| description
     |     | it receives an answer relating to a different query than it
     |     | expects.
  58 | D   | a single byte representing the numeric value of the destination
-    |     | (server-side) drive (A=0, B=1, C=2, etc).
+    |     | (server-side) drive (A=0, B=1, C=2, etc) in its 5 lowest bits,
+    |     | and flags in its highest 3 bits (flags are undefined yet).
  59 | L   | the AL value of the original INT 2F query, used by the server to
     |     | identify the exact "subfunction" that is being called.
  60 | xxx | a variable-length payload of the request, it highly depends on the
@@ -177,20 +178,21 @@ Request: Affffffff...
   ffff... = path/file mask (eg. X:\DIR\FILE????.???), variable length (up to
             the end of the ethernet frame)
 
-Answer: AfffffffffffttddssssCC (22 bytes)
-  A = single byte with the attributes of the file
+Answer: AfffffffffffttddssssCCpp (24 bytes)
+  A = single byte with the attributes we look for
   fff... = filename in FCB format (always 11 bytes, "FILE0000TXT")
   tt = time of file (word)
   dd = date of file (word)
   ssss = file size (dword)
   CC = "cluster" of the directory (its 16-bit identifier)
+  pp = position of the file within the directory
 ==============================================================================
 FINDNEXT (0x1C)
 
-Request: CCDDAfffffffffff
+Request: CCppAfffffffffff
   CC = "cluster" of the searched directory (its 16-bit identifier)
-  DD = a 16-bit value holding the directory count
-  A = single byte with attributes we look for
+  pp = the position of the last file within the directory
+  A  = a single byte with attributes we look for
   ffff... = an 11-bytes file search template (eg. FILE????.???)
 
 Answer: exactly the same as for FindFirst
