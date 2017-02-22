@@ -123,6 +123,14 @@ program has bugs, this one is surely not an exception. I can only recommend
 that you perform periodic backups of your data, just in case.
 
 
+===[ Contact the author ]=====================================================
+
+I'm always happy to get feedback about my software: bug reports, feature
+requests, or simply knowing that you use it and it works for you.
+You won't get my e-mail address here, but you should find contact pointers to
+me on my website: http://mateusz.viste.fr.
+
+
 ===[ License ]================================================================
 
 EtherDFS is distributed under the terms of the MIT License, as listed below.
