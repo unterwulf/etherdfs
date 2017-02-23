@@ -23,15 +23,15 @@ only requires a working packet driver. The catch of using raw ethernet frames
 is that EtherDFS is unable to communicate outside of a single LAN.
 
 Syntax:
-  etherdfs SRVMAC rdrive-ldrive [options]
+  etherdfs SRVMAC rdrv1-ldrv1 [rdrv2-ldrv2] [rdrvX-ldrvX] [options]
   etherdfs /u
 
   where:
   SRVMAC  is the MAC address of the file server EtherDFS will connect to. You
           can also use '::' so EtherDFS will try to auto-discover the server
           present in your LAN.
-  rdrive  is the remote drive you want to access on the EtherSRV server.
-  ldrive  is a local drive letter where the remote filesystem will be mapped.
+  rdrv    is the remote drive you want to access on the EtherSRV server.
+  ldrv    is a local drive letter where the remote filesystem will be mapped.
 
 Available options:
   /p=XX   use the network packet driver XX (autodetected in the range 60h..80h
@@ -41,7 +41,7 @@ Available options:
 
 Examples:
   etherdfs 6d:4f:4a:4d:49:52 C-F /q
-  etherdfs :: C-X /p=80
+  etherdfs :: C-X D-Y E-Z /p=80
 
 Note: all arguments passed to EtherDFS are case-insensitive.
 
@@ -56,12 +56,6 @@ EtherDFS hardware/software requirements:
 
 ethersrv, on the other hand, requires a reasonably modern Linux system.
 Future versions will probably provide a DOS version of ethersrv, too.
-
-
-===[ Multiple drives ]========================================================
-
-Currently EtherDFS can handle only a single drive. Future versions will be
-enhanced to provide support for mapping multiple drives of the remote server.
 
 
 ===[ Can I use other networking software while EtherDFS is loaded? ]==========

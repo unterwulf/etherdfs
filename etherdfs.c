@@ -283,14 +283,10 @@ static unsigned short sendquery(unsigned char query, unsigned char drive, unsign
   unsigned char t;
   unsigned char volatile far *rtc = (unsigned char far *)0x46C; /* this points to a char, while the rtc timer is a word - but I care only about the lowest 8 bits. Be warned that this location won't increment while interrupts are disabled! */
 
-  /* resolve remote drive or die (for now it's easy since only a single drive
-   * can possibly be configured, but future versions shall support multiple
-   * drive mappings */
-  if (drive == glob_data.ldrv) {
-    drive = glob_data.rdrv;
-  } else { /* drive not found */
-    return(0);
-  }
+  /* resolve remote drive - no need to validate it, it has been validated
+   * already by inthandler() */
+  drive = glob_data.ldrv[drive];
+
   /* if query too long then quit */
   if (bufflen > (sizeof(glob_pktdrv_sndbuff) - 60)) return(0);
   /* inc seq */
@@ -702,8 +698,8 @@ void process2f(void) {
         }
         sftptr->open_mode &= 0xfff0; /* sanitize the open mode */
         sftptr->open_mode |= 2; /* read/write */
-        if (sftptr->open_mode & 0x8000) {
-          /* TODO FIXME no idea what I should do here - PHANTOM talks about set_sft_owner() */
+        if (sftptr->open_mode & 0x8000) { /* if bit 15 is set, then it's a "FCB open", and requires the internal DOS "Set FCB Owner" function to be called */
+          /* TODO FIXME set_sft_owner() */
         #if DEBUGLEVEL > 0
           dbg_VGA[25*80] = 0x1700 | '$';
         #endif
@@ -935,13 +931,16 @@ void __interrupt __far inthandler(union INTPACK r) {
         dbg_VGA[dbg_startoffset + dbg_xpos++] = 0x6e00 | ('A' + glob_reqdrv);
         dbg_VGA[dbg_startoffset + dbg_xpos++] = 0x6e00 | ':';
       #endif
-        if (glob_reqdrv != glob_data.ldrv) goto CHAINTOPREVHANDLER;
-        if (r.h.al != AL_DISKSPACE) gen_fcbname_from_path();
         }
         break;
     }
   }
-  if (glob_reqdrv != glob_data.ldrv) goto CHAINTOPREVHANDLER;
+  /* validate drive */
+  if ((glob_reqdrv > 25) || (glob_data.ldrv[glob_reqdrv] == 0xff)) {
+    goto CHAINTOPREVHANDLER;
+  }
+
+  if (r.h.al != AL_DISKSPACE) gen_fcbname_from_path();
 
   /* copy interrupt registers into glob_intregs so the int handler can access them without using any stack */
   copybytes(&glob_intregs, &r, sizeof(union INTPACK));
@@ -1246,7 +1245,7 @@ struct argstruct {
  * non-zero otherwise */
 static int parseargv(struct argstruct *args) {
   /* Syntax: etherdfs SRVMAC rdrive:ldrive [options] */
-  int i;
+  int i, drivemapflag = 0;
   /* if only one argument given, it must be /u */
   if (args->argc == 2) {
     /* must be two characters long, and start with a '/' */
@@ -1269,14 +1268,22 @@ static int parseargv(struct argstruct *args) {
     if (string2mac(GLOB_RMAC, args->argv[1]) != 0) return(-1);
   }
 
-  /* is rdrive:ldrive option sane? */
-  if ((args->argv[2][0] < 'A') || (args->argv[2][1] != '-') || (args->argv[2][2] < 'A') || (args->argv[2][3] != 0)) return(-2);
-  glob_data.rdrv = DRIVETONUM(args->argv[2][0]);
-  glob_data.ldrv = DRIVETONUM(args->argv[2][2]);
   /* iterate through options, if any */
-  for (i = 3; i < args->argc; i++) {
+  for (i = 2; i < args->argc; i++) {
     char opt;
     char *arg;
+    /* is it a drive mapping, like "c-x"? */
+    if ((args->argv[i][0] >= 'A') && (args->argv[i][1] == '-') && (args->argv[i][2] >= 'A') && (args->argv[i][3] == 0)) {
+      unsigned char ldrv, rdrv;
+      rdrv = DRIVETONUM(args->argv[i][0]);
+      ldrv = DRIVETONUM(args->argv[i][2]);
+      if ((ldrv > 25) || (rdrv > 25)) return(-2);
+      if (glob_data.ldrv[ldrv] != 0xff) return(-2);
+      glob_data.ldrv[ldrv] = rdrv;
+      drivemapflag = 1;
+      continue;
+    }
+    /* not a drive mapping -> check for options */
     if ((args->argv[i][0] != '/') || (args->argv[i][1] == 0)) return(-3);
     opt = args->argv[i][1];
     /* fetch option's argument, if any */
@@ -1305,6 +1312,8 @@ static int parseargv(struct argstruct *args) {
         return(-5);
     }
   }
+  /* did I get at least one drive mapping? */
+  if (drivemapflag == 0) return(-6);
   return(0);
 }
 
@@ -1456,7 +1465,11 @@ int main(int argc, char **argv) {
   struct argstruct args;
   struct cdsstruct far *cds;
   unsigned char tmpflag = 0;
+  int i;
   unsigned short volatile newdataseg; /* 'volatile' just in case the compiler would try to optimize it out, since I set it through in-line assembly */
+
+  /* set all drive mappings as 'unused' */
+  for (i = 0; i < 26; i++) glob_data.ldrv[i] = 0xff;
 
   /* parse command-line arguments */
   zerobytes(&args, sizeof(args));
@@ -1608,9 +1621,12 @@ int main(int argc, char **argv) {
       pop bx
       pop ax
     }
-    /* set drive as 'not available' */
-    cds = getcds(tsrdata->ldrv);
-    if (cds != NULL) cds->flags = 0;
+    /* set all mapped drives as 'not available' */
+    for (i = 0; i < 26; i++) {
+      if (tsrdata->ldrv[i] == 0xff) continue;
+      cds = getcds(i);
+      if (cds != NULL) cds->flags = 0;
+    }
     /* free TSR's data/stack seg and its PSP */
     freeseg(mydataseg);
     freeseg(tsrdata->pspseg);
@@ -1642,17 +1658,18 @@ int main(int argc, char **argv) {
     return(1);
   }
 
-  /* enable the new drive */
-  cds = getcds(glob_data.ldrv);
-  if (cds == NULL) {
-    #include "msg\\mapfail.c"
-    return(1);
-  }
-
-  /* if the requested drive is already active, fail */
-  if (cds->flags != 0) {
-    #include "msg\\drvactiv.c"
-    return(1);
+  /* if any of the to-be-mapped drives is already active, fail */
+  for (i = 0; i < 26; i++) {
+    if (glob_data.ldrv[i] == 0xff) continue;
+    cds = getcds(i);
+    if (cds == NULL) {
+      #include "msg\\mapfail.c"
+      return(1);
+    }
+    if (cds->flags != 0) {
+      #include "msg\\drvactiv.c"
+      return(1);
+    }
   }
 
   /* allocate a new segment for all my internal needs, and use it right away
@@ -1707,7 +1724,6 @@ int main(int argc, char **argv) {
   /* init the packet driver interface */
   glob_data.pktint = 0;
   if (args.pktint == 0) { /* detect first packet driver within int 60h..80h */
-    int i;
     for (i = 0x60; i <= 0x80; i++) {
       if (pktdrv_init(i) == 0) break;
     }
@@ -1724,12 +1740,13 @@ int main(int argc, char **argv) {
 
   /* should I auto-discover the server? */
   if ((args.flags & ARGFL_AUTO) != 0) {
-    unsigned short i, *ax;
+    unsigned short *ax;
     unsigned char *answer;
     /* set (temporarily) glob_rmac to broadcast */
     for (i = 0; i < 6; i++) GLOB_RMAC[i] = 0xff;
+    for (i = 0; glob_data.ldrv[i] == 0xff; i++); /* find first mapped disk */
     /* send a discovery frame that will update glob_rmac */
-    if (sendquery(AL_DISKSPACE, glob_data.ldrv, 0, &answer, &ax, 1) != 6) {
+    if (sendquery(AL_DISKSPACE, i, 0, &answer, &ax, 1) != 6) {
       #include "msg\\nosrvfnd.c"
       pktdrv_free(glob_pktdrv_pktcall); /* free the pkt drv and quit */
       freeseg(newdataseg);
@@ -1737,13 +1754,16 @@ int main(int argc, char **argv) {
     }
   }
 
-  /* set the drive as being a 'network' disk (also add the PHYSICAL bit,
+  /* set all drives as being 'network' drives (also add the PHYSICAL bit,
    * otherwise MS-DOS 6.0 will ignore the drive) */
-  cds->flags = CDSFLAG_NET | CDSFLAG_PHY;
+  for (i = 0; i < 26; i++) {
+    if (glob_data.ldrv[i] == 0xff) continue;
+    cds = getcds(i);
+    cds->flags = CDSFLAG_NET | CDSFLAG_PHY;
+  }
 
   if ((args.flags & ARGFL_QUIET) == 0) {
     char buff[20];
-    int i;
     #include "msg\\instlled.c"
     for (i = 0; i < 6; i++) {
       byte2hex(buff + i + i + i, GLOB_LMAC[i]);
@@ -1753,44 +1773,40 @@ int main(int argc, char **argv) {
     outmsg(buff);
     #include "msg\\pktdrvat.c"
     byte2hex(buff, glob_data.pktint);
-    buff[2] = '$';
+    buff[2] = ')';
+    buff[3] = '\r';
+    buff[4] = '\n';
+    buff[5] = '$';
     outmsg(buff);
-    buff[0] = ')';
-    buff[1] = '\r';
-    buff[2] = '\n';
-    buff[3] = ' ';
-    buff[4] = '$';
-    outmsg(buff);
-    buff[0] = 'A' + glob_data.ldrv;
-    buff[1] = '$';
-    outmsg(buff);
-    buff[0] = ':';
-    buff[1] = ' ';
-    buff[2] = '-';
-    buff[3] = '>';
-    buff[4] = ' ';
-    buff[5] = '[';
-    buff[6] = '$';
-    outmsg(buff);
-    buff[0] = 'A' + glob_data.rdrv;
-    buff[1] = '$';
-    outmsg(buff);
-    buff[0] = ':';
-    buff[1] = ']';
-    buff[2] = ' ';
-    buff[3] = 'o';
-    buff[4] = 'n';
-    buff[5] = ' ';
-    buff[6] = '$';
-    outmsg(buff);
-    for (i = 0; i < 6; i++) {
-      byte2hex(buff + i + i + i, GLOB_RMAC[i]);
+    for (i = 0; i < 26; i++) {
+      int z;
+      if (glob_data.ldrv[i] == 0xff) continue;
+      buff[0] = ' ';
+      buff[1] = 'A' + i;
+      buff[2] = ':';
+      buff[3] = ' ';
+      buff[4] = '-';
+      buff[5] = '>';
+      buff[6] = ' ';
+      buff[7] = '[';
+      buff[8] = 'A' + glob_data.ldrv[i];
+      buff[9] = ':';
+      buff[10] = ']';
+      buff[11] = ' ';
+      buff[12] = 'o';
+      buff[13] = 'n';
+      buff[14] = ' ';
+      buff[15] = '$';
+      outmsg(buff);
+      for (z = 0; z < 6; z++) {
+        byte2hex(buff + z + z + z, GLOB_RMAC[z]);
+      }
+      for (z = 2; z < 16; z += 3) buff[z] = ':';
+      buff[17] = '\r';
+      buff[18] = '\n';
+      buff[19] = '$';
+      outmsg(buff);
     }
-    for (i = 2; i < 16; i += 3) buff[i] = ':';
-    buff[17] = '\r';
-    buff[18] = '\n';
-    buff[19] = '$';
-    outmsg(buff);
   }
 
   /* get the segment of the PSP (might come handy later) */

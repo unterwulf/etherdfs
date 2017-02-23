@@ -43,8 +43,7 @@ static struct tsrshareddata {
 /*  6 */ unsigned short pkthandle; /* handler returned by the packet driver */
 /*  8 */ unsigned char pktint;     /* software interrupt of the packet driver */
 
-         unsigned char ldrv;    /* local drive letter (0=A:, 1=B:, etc) */
-         unsigned char rdrv;    /* remote drive (0=A:, 1=B:, etc) */
+         unsigned char ldrv[26]; /* local to remote drives mappings (0=A:, 1=B, etc */
 } glob_data;
 
 /* global variables related to packet driver management and handling frames */
