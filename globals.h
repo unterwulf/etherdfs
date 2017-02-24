@@ -55,7 +55,6 @@ static unsigned long glob_pktdrv_pktcall;     /* vector address of the pktdrv in
 /* a few definitions for data that points to my sending buffer */
 #define GLOB_LMAC (glob_pktdrv_sndbuff + 6) /* local MAC address */
 #define GLOB_RMAC (glob_pktdrv_sndbuff)     /* remote MAC address */
-static unsigned short *glob_ethertype = ((unsigned short *)glob_pktdrv_sndbuff)+6; /* ethertype field */
 
 static unsigned char glob_reqdrv;  /* the requested drive, set by the INT 2F *
                                     * handler and read by process2f()        */

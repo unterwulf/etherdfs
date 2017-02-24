@@ -849,9 +849,37 @@ void __interrupt __far inthandler(union INTPACK r) {
     /* switch to new (patched) DS */
     mov ax, 0
     mov ds, ax
-    /* save one word from the stack (might be used by SETATTR later) */
-    mov ax, [BP+10]
+    /* save one word from the stack (might be used by SETATTR later)
+     * The original stack should be at SS:BP+30 */
+    mov ax, ss:[BP+30]
     mov glob_reqstkword, ax
+
+    /* uncomment the debug code below to insert a stack's dump into snd eth
+     * frame - debugging ONLY! */
+    /*
+    mov ax, ss:[BP+20]
+    mov word ptr [glob_pktdrv_sndbuff+16], ax
+    mov ax, ss:[BP+22]
+    mov word ptr [glob_pktdrv_sndbuff+18], ax
+    mov ax, ss:[BP+24]
+    mov word ptr [glob_pktdrv_sndbuff+20], ax
+    mov ax, ss:[BP+26]
+    mov word ptr [glob_pktdrv_sndbuff+22], ax
+    mov ax, ss:[BP+28]
+    mov word ptr [glob_pktdrv_sndbuff+24], ax
+    mov ax, ss:[BP+30]
+    mov word ptr [glob_pktdrv_sndbuff+26], ax
+    mov ax, ss:[BP+32]
+    mov word ptr [glob_pktdrv_sndbuff+28], ax
+    mov ax, ss:[BP+34]
+    mov word ptr [glob_pktdrv_sndbuff+30], ax
+    mov ax, ss:[BP+36]
+    mov word ptr [glob_pktdrv_sndbuff+32], ax
+    mov ax, ss:[BP+38]
+    mov word ptr [glob_pktdrv_sndbuff+34], ax
+    mov ax, ss:[BP+40]
+    mov word ptr [glob_pktdrv_sndbuff+36], ax
+    */
     /* restore AX */
     pop ax
   }
@@ -994,8 +1022,8 @@ static int pktdrv_accesstype(void) {
     mov ax, 201h        /* AH=subfunction access_type(), AL=if_class=1(eth) */
     mov bx, 0ffffh      /* if_type = 0xffff means 'all' */
     mov dl, 0           /* if_number: 0 (first interface) */
-    /* I don't modify DS, it already points to the segment of etype */
-    mov si, glob_ethertype /* DS:SI should point to etype[] */
+    /* DS:SI should point to the ethertype value in network byte order */
+    mov si, offset glob_pktdrv_sndbuff + 12 /* I don't set DS, it's good already */
     mov cx, 2           /* typelen (ethertype is 16 bits) */
     /* ES:DI points to the receiving routine */
     push cs /* write segment of pktdrv_recv into es */
@@ -1057,7 +1085,8 @@ static int pktdrv_init(unsigned short pktintparam) {
   sig[7] = 'R';
 
   /* set my ethertype to 0xF5ED (EDF5 in network byte order) */
-  *glob_ethertype = 0xF5EDu;
+  glob_pktdrv_sndbuff[12] = 0xED;
+  glob_pktdrv_sndbuff[13] = 0xF5;
   /* set the protover field in send buffer (I won't touch it again) */
   glob_pktdrv_sndbuff[56] = PROTOVER; /* protocol version */
 
@@ -1760,6 +1789,11 @@ int main(int argc, char **argv) {
     if (glob_data.ldrv[i] == 0xff) continue;
     cds = getcds(i);
     cds->flags = CDSFLAG_NET | CDSFLAG_PHY;
+    /* set 'current path' to root, to avoid inheriting any garbage */
+    cds->current_path[0] = 'A' + i;
+    cds->current_path[1] = ':';
+    cds->current_path[2] = '\\';
+    cds->current_path[3] = 0;
   }
 
   if ((args.flags & ARGFL_QUIET) == 0) {
