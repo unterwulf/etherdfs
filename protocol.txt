@@ -197,3 +197,17 @@ Request: CCppAfffffffffff
 
 Answer: exactly the same as for FindFirst
 ==============================================================================
+SETFILETIMESTAMP (0x24)
+
+Request: ttddfff...
+  tt     = new time to be set on the file (FAT format, 16 bits)
+  dd     = new date to be set on the file (FAT format, 16 bits)
+  fff... = the file path/name
+
+Answer: - (AX zero on success, non-zero otherwise)
+
+Note: The INT 2Fh interface provides no method to set a file's timestamp. This
+      call is supported by the EDF5 protocol, but client application must get
+      creative if such support is required. This would typically involve
+      catching INT 21h,AX=5701h queries.
+==============================================================================
