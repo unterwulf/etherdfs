@@ -686,7 +686,7 @@ void process2f(void) {
       i = sendquery(subfunction, glob_reqdrv, i + 6, &answer, &ax, 0);
       if ((unsigned short)i == 0xffffu) {
         FAILFLAG(2);
-      } else if ((i != 24) || (*ax != 0)) {
+      } else if ((i != 25) || (*ax != 0)) {
         FAILFLAG(*ax);
       } else {
         /* ES:DI contains an uninitialized SFT */
@@ -694,10 +694,7 @@ void process2f(void) {
         /* special treatment for SPOP, (set open_mode and return CX, too) */
         if (subfunction == AL_SPOPNFIL) {
           glob_intregs.w.cx = ((unsigned short *)answer)[11];
-          sftptr->open_mode = glob_sdaptr->spop_mode & 0x7f; /* not super sure about that... this is how PHANTOM.C does it */
         }
-        sftptr->open_mode &= 0xfff0; /* sanitize the open mode */
-        sftptr->open_mode |= 2; /* read/write */
         if (sftptr->open_mode & 0x8000) { /* if bit 15 is set, then it's a "FCB open", and requires the internal DOS "Set FCB Owner" function to be called */
           /* TODO FIXME set_sft_owner() */
         #if DEBUGLEVEL > 0
@@ -711,6 +708,8 @@ void process2f(void) {
         sftptr->file_time = ((unsigned long *)answer)[3];
         sftptr->file_size = ((unsigned long *)answer)[4];
         sftptr->file_pos = 0;
+        sftptr->open_mode &= 0xff00u;
+        sftptr->open_mode |= answer[24];
         sftptr->rel_sector = 0xffff;
         sftptr->abs_sector = 0xffff;
         sftptr->dir_sector = 0;
@@ -829,7 +828,7 @@ void process2f(void) {
       i = sendquery(AL_SKFMEND, glob_reqdrv, 6, &answer, &ax, 0);
       if (i == 0xffffu) {
         FAILFLAG(2);
-      } else if (*ax != 0) {
+      } else if ((*ax != 0) || (i != 4)) {
         FAILFLAG(*ax);
       } else { /* put new position into DX:AX */
         glob_intregs.w.ax = ((unsigned short *)answer)[0];

@@ -160,14 +160,15 @@ Request: SSCCMMfff...
   MM = "open mode" (see RBIL for details) - only relevant for SPOPNFIL
   fff... = path/file name
 
-Answer: AfffffffffffttddssssCCRR (24 bytes)
-  A = single byte with the attributes of the file
+Answer: AfffffffffffttddssssCCRRo (25 bytes)
+  A  = single byte with the attributes of the file
   fff... = filename in FCB format (always 11 bytes, "FILE0000TXT")
   tt = time of file (word)
   dd = date of file (word)
   ssss = file size (dword)
   CC = start cluster of the file (16 bits)
   RR = CX result: 1=opened, 2=created, 3=truncated (used with SPOPNFIL only)
+  o  = access and open mode, as defined by INT 21h/AH=3Dh
 
 Note: Returns AX != 0 on error.
 ==============================================================================
