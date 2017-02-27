@@ -1,6 +1,6 @@
 /*
  * Opens a file, writes content to it, then opens it again and write new content
- * in the middle.
+ * in the middle. Should print to screen "Hello, World! This is Mateusz."
  */
 
 #include <stdio.h>
