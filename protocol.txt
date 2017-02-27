@@ -197,12 +197,25 @@ Request: CCppAfffffffffff
 
 Answer: exactly the same as for FindFirst
 ==============================================================================
+SEEKFROMEND (0x21)
+
+The EDF5 protocol doesn't really need any 'seek' function. This is rather used
+by applications to detect changes of file sizes, by translating a 'seek from
+end' offset into a 'seek from start' offset.
+
+Request: ooooSS
+  oooo = offset (in bytes) from end of file
+  SS   = the 'starting sector' (or 16-bit id) of the open file
+
+Answer: oooo
+  oooo = offset (in bytes) from start of file
+==============================================================================
 SETFILETIMESTAMP (0x24)
 
-Request: ttddfff...
-  tt     = new time to be set on the file (FAT format, 16 bits)
-  dd     = new date to be set on the file (FAT format, 16 bits)
-  fff... = the file path/name
+Request: ttddSS
+  tt = new time to be set on the file (FAT format, 16 bits)
+  dd = new date to be set on the file (FAT format, 16 bits)
+  SS = the 'starting sector' (or 16-bit id) of the open file
 
 Answer: - (AX zero on success, non-zero otherwise)
 

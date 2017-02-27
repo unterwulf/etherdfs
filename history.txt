@@ -5,6 +5,7 @@ v0.8 [xxxx-xx-xx]:
  - added unloading support (/u),
  - fixed a FindFirst regression (fixes usage under 4DOS),
  - fixed SETATTR action when using a non-FreeDOS attrib command,
+ - implemented the 'Seek From End' call,
  - support for multiple drive mappings.
 
 v0.7 [2017-02-11]:

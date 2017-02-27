@@ -74,7 +74,7 @@ static int len_if_no_wildcards(char far *s) {
 /* this function is called two times by the packet driver. One time for
  * telling that a packet is incoming, and how big it is, so the application
  * can prepare a buffer for it and hand it back to the packet driver. the
- * second call is just let know that the frame has been copied into the
+ * second call is just to let know that the frame has been copied into the
  * buffer. This is a naked function - I don't need the compiler to get into
  * the way when dealing with packet driver callbacks.
  * IMPORTANT: this function must take care to modify ONLY the registers
@@ -820,9 +820,23 @@ void process2f(void) {
       }
       break;
     case AL_SKFMEND: /*** 21h: SKFMEND **************************************/
-      /* TODO */
-      FAILFLAG(2);
+    {
+      struct sftstruct far *sftptr = MK_FP(glob_intregs.x.es, glob_intregs.x.di);
+      ((unsigned short *)buff)[0] = glob_intregs.x.dx;
+      ((unsigned short *)buff)[1] = glob_intregs.x.cx;
+      ((unsigned short *)buff)[2] = sftptr->start_sector;
+      /* send query to remote peer and wait for answer */
+      i = sendquery(AL_SKFMEND, glob_reqdrv, 6, &answer, &ax, 0);
+      if (i == 0xffffu) {
+        FAILFLAG(2);
+      } else if (*ax != 0) {
+        FAILFLAG(*ax);
+      } else { /* put new position into DX:AX */
+        glob_intregs.w.ax = ((unsigned short *)answer)[0];
+        glob_intregs.w.dx = ((unsigned short *)answer)[1];
+      }
       break;
+    }
     case AL_UNKNOWN_2D: /*** 2Dh: UNKNOWN_2D ********************************/
       /* this is only called in MS-DOS v4.01, its purpose is unknown. MSCDEX
        * returns AX=2 there, and so do I. */
