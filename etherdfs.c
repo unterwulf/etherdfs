@@ -56,6 +56,15 @@ static void copybytes(void far *d, void far *s, unsigned int l) {
   }
 }
 
+static unsigned short mystrlen(void far *s) {
+  unsigned short res = 0;
+  while (*(unsigned char far *)s != 0) {
+    res++;
+    s = ((unsigned char far *)s) + 1;
+  }
+  return(res);
+}
+
 /* returns -1 if the NULL-terminated s string contains any wildcard (?, *)
  * character. otherwise returns the length of the string. */
 static int len_if_no_wildcards(char far *s) {
@@ -247,34 +256,6 @@ regs.h.ah
 */
 
 
-/* This function should not be necessary. DOS usually generates an FCB
- * style name in the appropriate SDA area. However, in the case of
- * user input such as 'CD ..' or 'DIR ..' it leaves the fcb area all
- * spaces. So this function needs to be called every time. */
-static void gen_fcbname_from_path(void) {
-  int i;
-  unsigned char far *path = glob_sdaptr->fn1;
-
-  /* fast forward 'path' to first character of the filename */
-  for (i = 0;; i++) {
-    if (glob_sdaptr->fn1[i] == '\\') path = glob_sdaptr->fn1 + i + 1;
-    if (glob_sdaptr->fn1[i] == 0) break;
-  }
-
-  /* clear out fcb_fn1 by filling it with spaces */
-  for (i = 0; i < 11; i++) glob_sdaptr->fcb_fn1[i] = ' ';
-
-  /* copy 'path' into fcb_name using the fcb syntax ("FILE    TXT") */
-  for (i = 0; *path != 0; path++) {
-    if (*path == '.') {
-      i = 8;
-    } else {
-      glob_sdaptr->fcb_fn1[i++] = *path;
-    }
-  }
-}
-
-
 /* sends query out, as found in glob_pktdrv_sndbuff, and awaits for an answer.
  * this function returns the length of replyptr, or 0xFFFF on error. */
 static unsigned short sendquery(unsigned char query, unsigned char drive, unsigned short bufflen, unsigned char **replyptr, unsigned short **replyax, unsigned int updatermac) {
@@ -402,17 +383,23 @@ void process2f(void) {
     case AL_RMDIR: /*** 01h: RMDIR ******************************************/
       /* RMDIR is like MKDIR, but I need to check if dir is not current first */
       for (i = 0; glob_sdaptr->fn1[i] != 0; i++) {
-        if (glob_sdaptr->fn1[i] != glob_sdaptr->drive_cdsptr[i]) break;
+        if (glob_sdaptr->fn1[i] != glob_sdaptr->drive_cdsptr[i]) goto proceedasmkdir;
       }
-      if (glob_sdaptr->fn1[i] == 0) {
-        FAILFLAG(16); /* err 16 = "attempted to remove current directory" */
+      FAILFLAG(16); /* err 16 = "attempted to remove current directory" */
+      break;
+      proceedasmkdir:
+    case AL_MKDIR: /*** 03h: MKDIR ******************************************/
+      i = mystrlen(glob_sdaptr->fn1);
+      /* fn1 must be at least 2 bytes long */
+      if (i < 2) {
+        FAILFLAG(3); /* "path not found" */
         break;
       }
-    case AL_MKDIR: /*** 03h: MKDIR ******************************************/
-      /* compute the length of fn1 and copy it to buff */
-      for (i = 2; glob_sdaptr->fn1[i] != 0; i++) buff[i - 2] = glob_sdaptr->fn1[i];
-      /* send query providing fn1 (but skip the first two bytes with drive) */
-      if (sendquery(subfunction, glob_reqdrv, i - 2, &answer, &ax, 0) == 0) {
+      /* copy fn1 to buff (but skip drive part) */
+      i -= 2;
+      copybytes(buff, glob_sdaptr->fn1 + 2, i);
+      /* send query providing fn1 */
+      if (sendquery(subfunction, glob_reqdrv, i, &answer, &ax, 0) == 0) {
         glob_intregs.w.ax = *ax;
         if (*ax != 0) glob_intregs.w.flags |= INTR_CF;
       } else {
@@ -425,15 +412,16 @@ void process2f(void) {
        * clearly thought that it was the redirector's job to update the CDS,
        * but in fact the callback is only meant to validate that the target
        * directory exists; DOS subsequently updates the CDS. */
-      /* compute the length of fn1 and copy it to buff */
-      for (i = 0; glob_sdaptr->fn1[i] != 0; i++);
+      /* fn1 must be at least 2 bytes long */
+      i = mystrlen(glob_sdaptr->fn1);
       if (i < 2) {
         FAILFLAG(3); /* "path not found" */
         break;
       }
+      /* copy fn1 to buff (but skip the drive: part) */
       i -= 2;
       copybytes(buff, glob_sdaptr->fn1 + 2, i);
-      /* send query providing fn1 (but skip the drive: part) */
+      /* send query providing fn1 */
       if (sendquery(AL_CHDIR, glob_reqdrv, i, &answer, &ax, 0) == 0) {
         glob_intregs.w.ax = *ax;
         if (*ax != 0) glob_intregs.w.flags |= INTR_CF;
@@ -480,7 +468,7 @@ void process2f(void) {
         } else {
           chunklen = FRAMESIZE - 60;
         }
-        /* query is SSPP (start sector, file position) */
+        /* query is OOOOSSLL (offset, start sector, lenght to read) */
         ((unsigned long *)buff)[0] = sftptr->file_pos + totreadlen;
         ((unsigned short *)buff)[2] = sftptr->start_sector;
         ((unsigned short *)buff)[3] = chunklen;
@@ -540,7 +528,7 @@ void process2f(void) {
           glob_intregs.x.cx = written;
           sftptr->file_pos += len;
           if (sftptr->file_pos > sftptr->file_size) sftptr->file_size = sftptr->file_pos;
-          if (len < chunklen) break; /* something bad happened on the other side */
+          if (len != chunklen) break; /* something bad happened on the other side */
         }
       }
 
@@ -565,21 +553,23 @@ void process2f(void) {
       }
       break;
     case AL_SETATTR: /*** 0Eh: SETATTR **************************************/
-      /* sdaptr->fn1 -> file to set attributes for */
-      /* stack word -> new attributes (stack must not be changed!) */
-      for (i = 0; glob_sdaptr->fn1[i] != 0; i++); /* strlen(fn1) */
+      /* sdaptr->fn1 -> file to set attributes for
+         stack word -> new attributes (stack must not be changed!) */
+      /* fn1 must be at least 2 characters long */
+      i = mystrlen(glob_sdaptr->fn1);
       if (i < 2) {
         FAILFLAG(2);
         break;
       }
-      i -= 2;
+      /* */
       buff[0] = glob_reqstkword;
+      /* copy fn1 to buff (but without the drive part) */
+      copybytes(buff + 1, glob_sdaptr->fn1 + 2, i - 2);
     #if DEBUGLEVEL > 0
       dbg_VGA[dbg_startoffset + dbg_xpos++] = 0x1000 | dbg_hexc[(glob_reqstkword >> 4) & 15];
       dbg_VGA[dbg_startoffset + dbg_xpos++] = 0x1000 | dbg_hexc[glob_reqstkword & 15];
     #endif
-      copybytes(buff + 1, glob_sdaptr->fn1 + 2, i);
-      i = sendquery(AL_SETATTR, glob_reqdrv, i + 1, &answer, &ax, 0);
+      i = sendquery(AL_SETATTR, glob_reqdrv, i - 1, &answer, &ax, 0);
       if (i != 0) {
         FAILFLAG(2);
       } else if (*ax != 0) {
@@ -587,7 +577,7 @@ void process2f(void) {
       }
       break;
     case AL_GETATTR: /*** 0Fh: GETATTR **************************************/
-      for (i = 0; glob_sdaptr->fn1[i] != 0; i++); /* strlen(fn1) */
+      i = mystrlen(glob_sdaptr->fn1);
       if (i < 2) {
         FAILFLAG(2);
         break;
@@ -622,7 +612,7 @@ void process2f(void) {
         break;
       }
       /* prepare the query (LSSS...DDD...) */
-      for (i = 0; glob_sdaptr->fn1[i] != 0; i++); /* strlen(fn1) */
+      i = mystrlen(glob_sdaptr->fn1);
       if (i < 2) {
         FAILFLAG(2);
         break;
@@ -630,7 +620,7 @@ void process2f(void) {
       i -= 2; /* trim out the drive: part (C:\FILE --> \FILE) */
       buff[0] = i;
       copybytes(buff + 1, glob_sdaptr->fn1 + 2, i);
-      for (i = 0; glob_sdaptr->fn2[i] != 0; i++); /* strlen(fn2) */
+      i = mystrlen(glob_sdaptr->fn2);
       if (i < 2) {
         FAILFLAG(2);
         break;
@@ -650,7 +640,7 @@ void process2f(void) {
       dbg_msg = glob_sdaptr->fn1;
     #endif
       /* compute length of fn1 and copy it to buff (w/o the 'drive:' part) */
-      for (i = 0; glob_sdaptr->fn1[i] != 0; i++);
+      i = mystrlen(glob_sdaptr->fn1);
       if (i < 2) {
         FAILFLAG(2);
         break;
@@ -855,7 +845,7 @@ void __interrupt __far inthandler(union INTPACK r) {
    * this will also contain the DS segment to use and actually set it */
   _asm {
     jmp SKIPTSRSIG
-    TSRSIG DB 'M','V','e','t','h','d'
+    TSRSIG DB 'M','V','e','t'
     SKIPTSRSIG:
     /* save AX */
     push ax
@@ -981,7 +971,32 @@ void __interrupt __far inthandler(union INTPACK r) {
     goto CHAINTOPREVHANDLER;
   }
 
-  if (r.h.al != AL_DISKSPACE) gen_fcbname_from_path();
+  /* This should not be necessary. DOS usually generates an FCB-style name in
+   * the appropriate SDA area. However, in the case of user input such as
+   * 'CD ..' or 'DIR ..' it leaves the fcb area all spaces, hence the need to
+   * normalize the fcb area every time. */
+  if (r.h.al != AL_DISKSPACE) {
+    unsigned short i;
+    unsigned char far *path = glob_sdaptr->fn1;
+
+    /* fast forward 'path' to first character of the filename */
+    for (i = 0;; i++) {
+      if (glob_sdaptr->fn1[i] == '\\') path = glob_sdaptr->fn1 + i + 1;
+      if (glob_sdaptr->fn1[i] == 0) break;
+    }
+
+    /* clear out fcb_fn1 by filling it with spaces */
+    for (i = 0; i < 11; i++) glob_sdaptr->fcb_fn1[i] = ' ';
+
+    /* copy 'path' into fcb_name using the fcb syntax ("FILE    TXT") */
+    for (i = 0; *path != 0; path++) {
+      if (*path == '.') {
+        i = 8;
+      } else {
+        glob_sdaptr->fcb_fn1[i++] = *path;
+      }
+    }
+  }
 
   /* copy interrupt registers into glob_intregs so the int handler can access them without using any stack */
   copybytes(&glob_intregs, &r, sizeof(union INTPACK));
@@ -1022,8 +1037,9 @@ void __interrupt __far inthandler(union INTPACK r) {
 
 #pragma code_seg("_TEXT", "CODE");
 
-/* this function is obviously useless - but I do need it because it is a
- * 'low-water' mark for the end of my resident code */
+/* this function obviously does nothing - but I need it because it is a
+ * 'low-water' mark for the end of my resident code (so I know how much memory
+ * exactly I can trim when going TSR) */
 void begtextend(void) {
 }
 
@@ -1437,11 +1453,16 @@ static int updatetsrds(void) {
   }
 
   /* first patch the TSR routine */
-  ptr = (unsigned char far *)inthandler + 23; /* the interrupt handler's signature appears at offset 23 (this might change at each source code modification and/or optimization settings) */
+  ptr = (unsigned char far *)inthandler + 24; /* the interrupt handler's signature appears at offset 23 (this might change at each source code modification and/or optimization settings) */
+  /*{
+    int x;
+    unsigned short far *VGA = (unsigned short far *)(0xB8000000l);
+    for (x = 0; x < 128; x++) VGA[80*12 + ((x >> 6) * 80) + (x & 63)] = 0x1f00 | ptr[x];
+  }*/
   sptr = (unsigned short far *)ptr;
-  /* check for the routine's signature first */
+  /* check for the routine's signature first ("MVet") */
   if ((ptr[0] != 'M') || (ptr[1] != 'V') || (ptr[2] != 'e') || (ptr[3] != 't')) return(-1);
-  sptr[4] = newds;
+  sptr[3] = newds;
   /* now patch the pktdrv_recv() routine */
   ptr = (unsigned char far *)pktdrv_recv + 3;
   sptr = (unsigned short far *)ptr;
@@ -1567,10 +1588,9 @@ int main(int argc, char **argv) {
       pop bx
       pop ax
     }
-    int2fptr = (unsigned char far *)MK_FP(myseg, myoff) + 23; /* the interrupt handler's signature appears at offset 23 (this might change at each source code modification) */
-    /* look for the "MVethd" signature */
-    if ((int2fptr[0] != 'M') || (int2fptr[1] != 'V') || (int2fptr[2] != 'e') || (int2fptr[3] != 't')
-     || (int2fptr[4] != 'h') || (int2fptr[5] != 'd')) {
+    int2fptr = (unsigned char far *)MK_FP(myseg, myoff) + 24; /* the interrupt handler's signature appears at offset 24 (this might change at each source code modification) */
+    /* look for the "MVet" signature */
+    if ((int2fptr[0] != 'M') || (int2fptr[1] != 'V') || (int2fptr[2] != 'e') || (int2fptr[3] != 't')) {
       #include "msg\\othertsr.c";
       return(1);
     }

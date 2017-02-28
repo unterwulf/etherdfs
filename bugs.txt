@@ -33,11 +33,3 @@ bug, but rather a limitation of MS-DOS. I might work around this in some
 future versions.
 
 ==============================================================================
-
-The "TYPE" command from MS-DOS 7.x displays only the first byte of files.
-
-For some reasons the "TYPE" command in MS-DOS 7.x reads only a single byte
-from the file it accesses, and stops immediately afterward. This has been
-observed only with MS-DOS 7.x, and only with this one command.
-
-==============================================================================
