@@ -85,7 +85,7 @@ int main(int argc, char **argv) {
   printf("2. Create & open the file, but only if it doesn't exist...\r\n");
   _asm {
     mov ax, 6c00h
-    xor bl, bl  /* open_mode = 0*/
+    mov bx, 1   /* open_mode = 1 (write access) */
     mov cx, 24h /* archive + system bits */
     xor dh, dh  /* dh is reserved */
     mov dl, 10h /* fail if file exists, create it if not */
@@ -216,8 +216,7 @@ int main(int argc, char **argv) {
     return(1);
   }
 
-  printf("7. Check file attributes... SKIPPED\r\n");
-  /*
+  printf("7. Check file attributes...\r\n");
   _asm {
     mov ax, 4300h
     mov dx, fname
@@ -234,7 +233,7 @@ int main(int argc, char **argv) {
   if ((mycflag != 0) || (mycx != 0x24)) {
     printf("ERROR! Failed to fetch attributes or attributes not as expected!\r\n");
     return(1);
-  }*/
+  }
   printf("OK\r\n-----------------------\r\n");
 
   /* open existing file fname, truncating it, and close it */
