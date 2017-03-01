@@ -1558,6 +1558,21 @@ int main(int argc, char **argv) {
     return(1);
   }
 
+  /* look whether or not it's ok to install a network redirector at int 2F */
+  _asm {
+    mov tmpflag, 0
+    mov ax, 1100h
+    int 2Fh
+    dec ax /* if AX was set to 1 (ie. "not ok to install"), it's zero now */
+    jnz goodtogo
+    mov tmpflag, 1
+    goodtogo:
+  }
+  if (tmpflag != 0) {
+    #include "msg\\noredir.c"
+    return(1);
+  }
+
   /* is it all about unloading myself? */
   if ((args.flags & ARGFL_UNLOAD) != 0) {
     unsigned char etherdfsid, pktint;

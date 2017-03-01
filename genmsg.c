@@ -85,6 +85,8 @@ int main(void) {
 
   genmsg("msg\\unsupdos.c", "Unsupported DOS version! etherdfs requires MS-DOS 5+.\r\n");
 
+  genmsg("msg\\noredir.c", "Redirector installation has been forbidden either by DOS or another process.\r\n");
+
   genmsg("msg\\alrload.c", "EtherDFS is already installed and cannot be loaded twice.\r\n");
 
   genmsg("msg\\notload.c", "EtherDFS is not loaded, so it cannot be unloaded.\r\n");
