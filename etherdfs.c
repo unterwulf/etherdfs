@@ -620,9 +620,9 @@ void process2f(void) {
       i -= 2; /* trim out the drive: part (C:\FILE --> \FILE) */
       buff[0] = i;
       copybytes(buff + 1, glob_sdaptr->fn1 + 2, i);
-      i = mystrlen(glob_sdaptr->fn2);
+      i = len_if_no_wildcards(glob_sdaptr->fn2);
       if (i < 2) {
-        FAILFLAG(2);
+        FAILFLAG(3);
         break;
       }
       i -= 2; /* trim out the drive: part (C:\FILE --> \FILE) */
