@@ -241,7 +241,7 @@ int main(int argc, char **argv) {
   _asm {
     mov ax, 6c00h
     xor bl, bl  /* open_mode = 0 */
-    mov cx, 20h /* archive bit only */
+    mov cx, 24h /* archive + system bit (archive only fails on MSDOS 7) */
     xor dh, dh  /* dh is reserved */
     mov dl, 02h /* fail if file doesn't exists, truncate otherwise */
     push si     /* save SI */
