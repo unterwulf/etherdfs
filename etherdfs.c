@@ -752,14 +752,15 @@ void process2f(void) {
         i += 5; /* i must provide the exact query's length */
       }
       /* send query to remote peer and wait for answer */
-      if (sendquery(subfunction, glob_reqdrv, i, &answer, &ax, 0) != 24) {
+      i = sendquery(subfunction, glob_reqdrv, i, &answer, &ax, 0);
+      if (i == 0xffffu) {
         if (subfunction == AL_FINDFIRST) {
           FAILFLAG(2); /* a failed findfirst returns error 2 (file not found) */
         } else {
           FAILFLAG(18); /* a failed findnext returns error 18 (no more files) */
         }
         break;
-      } else if (*ax != 0) {
+      } else if ((*ax != 0) || (i != 24)) {
         FAILFLAG(*ax);
         break;
       }
