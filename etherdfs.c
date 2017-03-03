@@ -917,13 +917,15 @@ void __interrupt __far inthandler(union INTPACK r) {
   /* set stack to my custom memory */
   _asm {
     cli /* make sure to disable interrupts, so nobody gets in the way while I'm fiddling with the stack */
-    mov glob_oldstack_seg, SS
-    mov glob_oldstack_off, SP
+    /* "push" old stack sp and ss at the top of new stack */
+    mov bx, tsr_stk_top
+    sub bx, 4
+    mov 2[bx], sp
+    mov [bx], ss
     /* set SS to DS */
-    mov ax, ds
-    mov ss, ax
-    mov ax, tsr_stk_top
-    mov sp, ax
+    push ds
+    pop ss
+    mov sp, bx
     sti
   }
   /* call the actual INT 2F processing function */
@@ -931,8 +933,9 @@ void __interrupt __far inthandler(union INTPACK r) {
   /* switch stack back */
   _asm {
     cli
-    mov SS, glob_oldstack_seg
-    mov SP, glob_oldstack_off
+    pop ax
+    pop sp
+    mov ss, ax
     sti
   }
   /* copy all registers back so watcom will set them as required 'for real' */

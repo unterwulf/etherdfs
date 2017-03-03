@@ -69,10 +69,6 @@ extern unsigned short glob_reqstkword; /* WORD saved from the stack (used by SET
 extern struct sdastruct far *glob_sdaptr; /* pointer to DOS SDA (set by main() at *
                                            * startup, used later by process2f()   */
 
-/* seg:off addresses of the old (DOS) stack */
-extern unsigned short glob_oldstack_seg;
-extern unsigned short glob_oldstack_off;
-
 /* the INT 2F "multiplex id" registerd by EtherDFS */
 extern unsigned char glob_multiplexid;
 
