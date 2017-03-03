@@ -23,17 +23,13 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
+#include <stddef.h>  /* NULL */
 #include <i86.h>     /* union INTPACK */
 #include "chint.h"   /* _mvchain_intr() */
 #include "version.h" /* program & protocol version */
 
 #include "dosstruc.h" /* definitions of structures used by DOS */
 #include "globals.h"  /* global variables used by etherdfs */
-
-/* define NULL, for readability of the code */
-#ifndef NULL
-  #define NULL (void *)0
-#endif
 
 /* all the resident code goes to segment TSRTEXT */
 #pragma code_seg("TSRTEXT", "TSR")
