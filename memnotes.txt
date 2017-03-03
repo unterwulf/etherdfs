@@ -97,17 +97,6 @@ fragmentation. To avoid that, it is possible to force DOS to allocate new
 memory as high as possible by temporarily overriding its memory allocation
 strategy - see INT 21h/AH=58h.
 
-*** Self-modifying code ***
-
-Allocating memory is easy - but how to tell my TSR to use it? The problem here
-is that I allocate said memory in my transient code, but I need it to be used
-also by the TSR routines (meaning all my interrupt handlers). The solution
-I applied to this problem is to patch my TSR routines during runtime. Sounds
-crazy, but it works well once mastered. When the transient code allocates
-the memory for my new segment, it inserts machine code at the top of every
-interrupt handler used by the TSR. The machine code loads DS and SS with the
-new segment, as obtained from the memory allocation function.
-
 *** Where do I draw the line? ***
 
 Once all is ready, you can at last go TSR and drop the transient part of the

@@ -5,17 +5,19 @@
 # http://etherdfs.sourceforge.net
 #
 
+AFLAGS = -0 -ms
+
 all: etherdfs.exe
 
 genmsg.exe: genmsg.c version.h
 	wcl -y -0 -s -d0 -lr -ms -we -wx -os genmsg.c -fe=genmsg.exe
 
-chint.obj: chint086.asm
-	wasm -0 chint086.asm -fo=chint.obj -ms
+.asm.obj:
+	wasm $(AFLAGS) $< -fo=$@
 
-etherdfs.exe: genmsg.exe etherdfs.c chint.obj dosstruc.h globals.h version.h
+etherdfs.exe: genmsg.exe etherdfs.c globals.c dgroup.obj chint086.obj tsrend.obj dosstruc.h globals.h version.h
 	genmsg.exe
-	wcl -y -0 -s -d0 -lr -ms -we -wx -k1024 -fm=etherdfs.map -os chint.obj etherdfs.c -fe=etherdfs.exe
+	*wcl -y -0 -s -lr -ms -we -wx -k1024 -fm=etherdfs.map dgroup.obj chint086.obj globals.c etherdfs.c tsrend.obj -fe=etherdfs.exe @etherdfs.wl
 
 # -y      ignore the WCL env. variable, if any
 # -0      generate code for 8086

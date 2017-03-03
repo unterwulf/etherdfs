@@ -110,10 +110,6 @@ int main(void) {
     "drive letter.\r\n"
   );
 
-  genmsg("msg\\memfail.c", "Memory alloc error!\r\n");
-
-  genmsg("msg\\relfail.c", "DS/SS relocation failed.\r\n");
-
   genmsg("msg\\pktdfail.c", "Packet driver initialization failed.\r\n");
 
   genmsg("msg\\nosrvfnd.c", "No EtherSRV server found on the LAN (not for requested drive at least).\r\n");

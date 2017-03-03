@@ -27,13 +27,6 @@
 #include "chint.h"   /* _mvchain_intr() */
 #include "version.h" /* program & protocol version */
 
-/* set DEBUGLEVEL to 0, 1 or 2 to turn on debug mode with desired verbosity */
-#define DEBUGLEVEL 0
-
-/* define the maximum size of a frame, as sent or received by etherdfs.
- * example: value 1084 accomodates payloads up to 1024 bytes +all headers */
-#define FRAMESIZE 1090
-
 #include "dosstruc.h" /* definitions of structures used by DOS */
 #include "globals.h"  /* global variables used by etherdfs */
 
@@ -42,9 +35,12 @@
   #define NULL (void *)0
 #endif
 
-/* all the resident code goes to segment 'BEGTEXT' */
-#pragma code_seg(BEGTEXT, CODE)
-
+/* all the resident code goes to segment TSRTEXT */
+#pragma code_seg("TSRTEXT", "TSR")
+/* all the resident data goes to segment TSRDATA, here it also instructs
+ * the compiler to put all static variables of resident functions into
+ * TSRDATA instead of _BSS or _DATA */
+#pragma data_seg("TSRDATA", "TSR")
 
 /* copies l bytes from *s to *d */
 static void copybytes(void far *d, void far *s, unsigned int l) {
@@ -91,16 +87,13 @@ static int len_if_no_wildcards(char far *s) {
  * be modified. */
 void __declspec(naked) far pktdrv_recv(void) {
   _asm {
-    jmp skip
-    SIG db 'p','k','t','r'
-    skip:
     /* save DS and flags to stack */
     push ds  /* save old ds (I will change it) */
     push bx  /* save bx (I use it as a temporary register) */
     pushf    /* save flags */
-    /* set my custom DS (not 0, it has been patched at runtime already) */
-    mov bx, 0
-    mov ds, bx
+    /* set my DS */
+    push cs
+    pop ds
     /* handle the call */
     cmp ax, 0
     jne secondcall /* if ax != 0, then packet driver just filled my buffer */
@@ -147,85 +140,6 @@ void __declspec(naked) far pktdrv_recv(void) {
  * B=1, C=2, etc) */
 #define DRIVETONUM(x) (((x) >= 'a') && ((x) <= 'z')?x-'a':x-'A')
 
-
-/* all the calls I support are in the range AL=0..2Eh - the list below serves
- * as a convenience to compare AL (subfunction) values */
-enum AL_SUBFUNCTIONS {
-  AL_INSTALLCHK = 0x00,
-  AL_RMDIR      = 0x01,
-  AL_MKDIR      = 0x03,
-  AL_CHDIR      = 0x05,
-  AL_CLSFIL     = 0x06,
-  AL_CMMTFIL    = 0x07,
-  AL_READFIL    = 0x08,
-  AL_WRITEFIL   = 0x09,
-  AL_LOCKFIL    = 0x0A,
-  AL_UNLOCKFIL  = 0x0B,
-  AL_DISKSPACE  = 0x0C,
-  AL_SETATTR    = 0x0E,
-  AL_GETATTR    = 0x0F,
-  AL_RENAME     = 0x11,
-  AL_DELETE     = 0x13,
-  AL_OPEN       = 0x16,
-  AL_CREATE     = 0x17,
-  AL_FINDFIRST  = 0x1B,
-  AL_FINDNEXT   = 0x1C,
-  AL_SKFMEND    = 0x21,
-  AL_UNKNOWN_2D = 0x2D,
-  AL_SPOPNFIL   = 0x2E,
-  AL_UNKNOWN    = 0xFF
-};
-
-/* this table makes it easy to figure out if I want a subfunction or not */
-static unsigned char supportedfunctions[0x2F] = {
-  AL_INSTALLCHK,  /* 0x00 */
-  AL_RMDIR,       /* 0x01 */
-  AL_UNKNOWN,     /* 0x02 */
-  AL_MKDIR,       /* 0x03 */
-  AL_UNKNOWN,     /* 0x04 */
-  AL_CHDIR,       /* 0x05 */
-  AL_CLSFIL,      /* 0x06 */
-  AL_CMMTFIL,     /* 0x07 */
-  AL_READFIL,     /* 0x08 */
-  AL_WRITEFIL,    /* 0x09 */
-  AL_LOCKFIL,     /* 0x0A */
-  AL_UNLOCKFIL,   /* 0x0B */
-  AL_DISKSPACE,   /* 0x0C */
-  AL_UNKNOWN,     /* 0x0D */
-  AL_SETATTR,     /* 0x0E */
-  AL_GETATTR,     /* 0x0F */
-  AL_UNKNOWN,     /* 0x10 */
-  AL_RENAME,      /* 0x11 */
-  AL_UNKNOWN,     /* 0x12 */
-  AL_DELETE,      /* 0x13 */
-  AL_UNKNOWN,     /* 0x14 */
-  AL_UNKNOWN,     /* 0x15 */
-  AL_OPEN,        /* 0x16 */
-  AL_CREATE,      /* 0x17 */
-  AL_UNKNOWN,     /* 0x18 */
-  AL_UNKNOWN,     /* 0x19 */
-  AL_UNKNOWN,     /* 0x1A */
-  AL_FINDFIRST,   /* 0x1B */
-  AL_FINDNEXT,    /* 0x1C */
-  AL_UNKNOWN,     /* 0x1D */
-  AL_UNKNOWN,     /* 0x1E */
-  AL_UNKNOWN,     /* 0x1F */
-  AL_UNKNOWN,     /* 0x20 */
-  AL_SKFMEND,     /* 0x21 */
-  AL_UNKNOWN,     /* 0x22 */
-  AL_UNKNOWN,     /* 0x23 */
-  AL_UNKNOWN,     /* 0x24 */
-  AL_UNKNOWN,     /* 0x25 */
-  AL_UNKNOWN,     /* 0x26 */
-  AL_UNKNOWN,     /* 0x27 */
-  AL_UNKNOWN,     /* 0x28 */
-  AL_UNKNOWN,     /* 0x29 */
-  AL_UNKNOWN,     /* 0x2A */
-  AL_UNKNOWN,     /* 0x2B */
-  AL_UNKNOWN,     /* 0x2C */
-  AL_UNKNOWN_2D,  /* 0x2D */
-  AL_SPOPNFIL     /* 0x2E */
-};
 
 /*
 an INTPACK struct contains following items:
@@ -842,17 +756,16 @@ void process2f(void) {
 
 /* this function is hooked on INT 2Fh */
 void __interrupt __far inthandler(union INTPACK r) {
-  /* insert a static code signature so I can reliably patch myself later,
-   * this will also contain the DS segment to use and actually set it */
+  /* Watcom's interrupt handler function prolog takes care of switching to our
+   * DS (that is the same as CS), so nothing needs to be done manually. */
+
+  /* insert a static code signature so I can reliably patch myself later */
   _asm {
     jmp SKIPTSRSIG
     TSRSIG DB 'M','V','e','t'
     SKIPTSRSIG:
     /* save AX */
     push ax
-    /* switch to new (patched) DS */
-    mov ax, 0
-    mov ds, ax
     /* save one word from the stack (might be used by SETATTR later)
      * The original stack should be at SS:BP+30 */
     mov ax, ss:[BP+30]
@@ -1009,10 +922,8 @@ void __interrupt __far inthandler(union INTPACK r) {
     /* set SS to DS */
     mov ax, ds
     mov ss, ax
-    /* set SP to the end of my DATASEGSZ (-2) */
-    mov sp, DATASEGSZ
-    dec sp
-    dec sp
+    mov ax, tsr_stk_top
+    mov sp, ax
     sti
   }
   /* call the actual INT 2F processing function */
@@ -1033,16 +944,10 @@ void __interrupt __far inthandler(union INTPACK r) {
   _mvchain_intr(MK_FP(glob_data.prev_2f_handler_seg, glob_data.prev_2f_handler_off));
 }
 
-
 /*********************** HERE ENDS THE RESIDENT PART ***********************/
 
-#pragma code_seg("_TEXT", "CODE");
-
-/* this function obviously does nothing - but I need it because it is a
- * 'low-water' mark for the end of my resident code (so I know how much memory
- * exactly I can trim when going TSR) */
-void begtextend(void) {
-}
+#pragma code_seg()
+#pragma data_seg()
 
 /* registers a packet driver handle to use on subsequent calls */
 static int pktdrv_accesstype(void) {
@@ -1393,45 +1298,6 @@ static void byte2hex(char *s, unsigned char b) {
   s[2] = 0;
 }
 
-/* allocates sz bytes of memory and returns the segment to allocated memory or
- * 0 on error. the allocation strategy is 'highest possible' (last fit) to
- * avoid memory fragmentation */
-static unsigned short allocseg(unsigned short sz) {
-  unsigned short volatile res = 0;
-  /* sz should contains number of 16-byte paragraphs instead of bytes */
-  sz += 15; /* make sure to allocate enough paragraphs */
-  sz >>= 4;
-  /* ask DOS for memory */
-  _asm {
-    push cx /* save cx */
-    /* set strategy to 'last fit' */
-    mov ah, 58h
-    xor al, al  /* al = 0 means 'get strategy' */
-    int 21h     /* now current strategy is in ax */
-    mov cx, ax  /* copy current strategy to cx */
-    mov ah, 58h
-    mov al, 1   /* al = 1 means 'set strategy' */
-    mov bl, 2   /* 2 or greater means 'last fit' */
-    int 21h
-    /* do the allocation now */
-    mov ah, 48h     /* alloc memory (DOS 2+) */
-    mov bx, sz      /* number of paragraphs to allocate */
-    mov res, 0      /* pre-set res to failure (0) */
-    int 21h         /* returns allocated segment in AX */
-    /* check CF */
-    jc failed
-    mov res, ax     /* set res to actual result */
-    failed:
-    /* set strategy back to its initial setting */
-    mov ah, 58h
-    mov al, 1
-    mov bx, cx
-    int 21h
-    pop cx    /* restore cx */
-  }
-  return(res);
-}
-
 /* free segment previously allocated through allocseg() */
 static void freeseg(unsigned short segm) {
   _asm {
@@ -1439,48 +1305,6 @@ static void freeseg(unsigned short segm) {
     mov es, segm  /* put segment to free into ES */
     int 21h
   }
-}
-
-/* patch the TSR routine and packet driver handler so they use my new DS.
- * return 0 on success, non-zero otherwise */
-static int updatetsrds(void) {
-  unsigned short newds;
-  unsigned char far *ptr;
-  unsigned short far *sptr;
-  newds = 0;
-  _asm {
-    push ds
-    pop newds
-  }
-
-  /* first patch the TSR routine */
-  ptr = (unsigned char far *)inthandler + 24; /* the interrupt handler's signature appears at offset 23 (this might change at each source code modification and/or optimization settings) */
-  /*{
-    int x;
-    unsigned short far *VGA = (unsigned short far *)(0xB8000000l);
-    for (x = 0; x < 128; x++) VGA[80*12 + ((x >> 6) * 80) + (x & 63)] = 0x1f00 | ptr[x];
-  }*/
-  sptr = (unsigned short far *)ptr;
-  /* check for the routine's signature first ("MVet") */
-  if ((ptr[0] != 'M') || (ptr[1] != 'V') || (ptr[2] != 'e') || (ptr[3] != 't')) return(-1);
-  sptr[3] = newds;
-  /* now patch the pktdrv_recv() routine */
-  ptr = (unsigned char far *)pktdrv_recv + 3;
-  sptr = (unsigned short far *)ptr;
-  /*{
-    int x;
-    unsigned short far *VGA = (unsigned short far *)(0xB8000000l);
-    for (x = 0; x < 128; x++) VGA[80*12 + ((x >> 6) * 80) + (x & 63)] = 0x1f00 | ptr[x];
-  }*/
-  /* check for the routine's signature first */
-  if ((ptr[0] != 'p') || (ptr[1] != 'k') || (ptr[2] != 't') || (ptr[3] != 'r')) return(-1);
-  sptr[4] = newds;
-  /*{
-    int x;
-    unsigned short far *VGA = (unsigned short far *)(0xB8000000l);
-    for (x = 0; x < 128; x++) VGA[80*20 + ((x >> 6) * 80) + (x & 63)] = 0x1f00 | ptr[x];
-  }*/
-  return(0);
 }
 
 /* scans the 2Fh interrupt for some available 'multiplex id' in the range
@@ -1530,7 +1354,6 @@ int main(int argc, char **argv) {
   struct cdsstruct far *cds;
   unsigned char tmpflag = 0;
   int i;
-  unsigned short volatile newdataseg; /* 'volatile' just in case the compiler would try to optimize it out, since I set it through in-line assembly */
 
   /* set all drive mappings as 'unused' */
   for (i = 0; i < 26; i++) glob_data.ldrv[i] = 0xff;
@@ -1604,7 +1427,7 @@ int main(int argc, char **argv) {
       pop bx
       pop ax
     }
-    int2fptr = (unsigned char far *)MK_FP(myseg, myoff) + 24; /* the interrupt handler's signature appears at offset 24 (this might change at each source code modification) */
+    int2fptr = (unsigned char far *)MK_FP(myseg, myoff) + 23; /* the interrupt handler's signature appears at offset 23 (this might change at each source code modification) */
     /* look for the "MVet" signature */
     if ((int2fptr[0] != 'M') || (int2fptr[1] != 'V') || (int2fptr[2] != 'e') || (int2fptr[3] != 't')) {
       #include "msg\\othertsr.c";
@@ -1705,8 +1528,7 @@ int main(int argc, char **argv) {
       cds = getcds(i);
       if (cds != NULL) cds->flags = 0;
     }
-    /* free TSR's data/stack seg and its PSP */
-    freeseg(mydataseg);
+    /* free TSR's PSP/data/stack seg */
     freeseg(tsrdata->pspseg);
     /* all done */
     #include "msg\\unloaded.c"
@@ -1750,52 +1572,6 @@ int main(int argc, char **argv) {
     }
   }
 
-  /* allocate a new segment for all my internal needs, and use it right away
-   * as DS */
-  newdataseg = allocseg(DATASEGSZ);
-  if (newdataseg == 0) {
-    #include "msg\\memfail.c"
-    return(1);
-  }
-
-  /* copy current DS into the new segment and switch to new DS/SS */
-  _asm {
-    /* save registers on the stack */
-    push es
-    push cx
-    push si
-    push di
-    pushf
-    /* copy the memory block */
-    mov cx, DATASEGSZ  /* copy cx bytes */
-    xor si, si         /* si = 0*/
-    xor di, di         /* di = 0 */
-    cld                /* clear direction flag (increment si/di) */
-    mov es, newdataseg /* load es with newdataseg */
-    rep movsb          /* execute copy DS:SI -> ES:DI */
-    /* restore registers (but NOT es, instead save it into AX for now) */
-    popf
-    pop di
-    pop si
-    pop cx
-    pop ax
-    /* switch to the new DS _AND_ SS now */
-    push es
-    push es
-    pop ds
-    pop ss
-    /* restore ES */
-    push ax
-    pop es
-  }
-
-  /* patch the TSR and pktdrv_recv() so they use my new DS */
-  if (updatetsrds() != 0) {
-    #include "msg\\relfail.c"
-    freeseg(newdataseg);
-    return(1);
-  }
-
   /* remember the SDA address (will be useful later) */
   glob_sdaptr = getsda();
 
@@ -1811,7 +1587,6 @@ int main(int argc, char **argv) {
   /* has it succeeded? */
   if (glob_data.pktint == 0) {
     #include "msg\\pktdfail.c"
-    freeseg(newdataseg);
     return(1);
   }
   pktdrv_getaddr(GLOB_LMAC);
@@ -1827,7 +1602,6 @@ int main(int argc, char **argv) {
     if (sendquery(AL_DISKSPACE, i, 0, &answer, &ax, 1) != 6) {
       #include "msg\\nosrvfnd.c"
       pktdrv_free(glob_pktdrv_pktcall); /* free the pkt drv and quit */
-      freeseg(newdataseg);
       return(1);
     }
   }
@@ -1926,19 +1700,29 @@ int main(int argc, char **argv) {
    * free all the libc startup code and my init functions by passing the
    * number of paragraphs to keep resident to INT 21h, AH=31h. How to compute
    * the number of paragraphs? Simple: look at the memory map and note down
-   * the size of the BEGTEXT segment (that's where I store all TSR routines).
-   * then: (sizeof(BEGTEXT) + sizeof(PSP) + 15) / 16
+   * the size of the TSR class segments (that's where I store all TSR routines
+   * and data).
+   * then: (sizeof(TSRTEXT) + sizeof(TSRDATA) + sizeof(PSP) + 15) / 16
    * PSP is 256 bytes of course. And +15 is needed to avoid truncating the
    * last (partially used) paragraph. */
   _asm {
     mov ax, 3100h  /* AH=31 'terminate+stay resident', AL=0 exit code */
-    mov dx, offset begtextend /* DX = offset of resident code end     */
-    add dx, 256    /* add size of PSP (256 bytes)                     */
+    mov dx, offset tsr_end_label /* DX = offset of resident code end  */
+    add dx, STKSZ
     add dx, 15     /* add 15 to avoid truncating last paragraph       */
     shr dx, 1      /* convert bytes to number of 16-bytes paragraphs  */
     shr dx, 1      /* the 8086/8088 CPU supports only a 1-bit version */
     shr dx, 1      /* of SHR, so I have to repeat it as many times as */
     shr dx, 1      /* many bits I need to shift.                      */
+
+    mov cx, dx     /* calculate the initial TSR sp value, so the TSR  */
+    shl cx, 1      /* stack will be in the very end of our memory     */
+    shl cx, 1      /* block and have size of at least STKSZ           */
+    shl cx, 1
+    shl cx, 1
+    mov tsr_stk_top, cx
+
+    add dx, 16    /* add size of PSP (256 bytes = 16 paragraphs)     */
     int 21h
   }
 

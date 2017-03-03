@@ -41,11 +41,7 @@
 
         name    chainint
 
-BEGTEXT   segment word public 'CODE'
-BEGTEXT   ends
-
-
-BEGTEXT   segment
+TSRTEXT   segment byte public 'TSR'
 
 _mvchain_intr     proc far
         public  "C",_mvchain_intr
@@ -71,5 +67,5 @@ _mvchain_intr     proc far
         ret                             ; return to previous interrupt handler
 _mvchain_intr     endp
 
-BEGTEXT   ends
+TSRTEXT   ends
         end
