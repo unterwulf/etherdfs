@@ -16,6 +16,7 @@ chint.obj: chint086.asm
 etherdfs.exe: genmsg.exe etherdfs.c chint.obj dosstruc.h globals.h version.h
 	genmsg.exe
 	wcl -y -0 -s -d0 -lr -ms -we -wx -k1024 -fm=etherdfs.map -os chint.obj etherdfs.c -fe=etherdfs.exe
+	upx -9 --8086 etherdfs.exe
 
 # -y      ignore the WCL env. variable, if any
 # -0      generate code for 8086

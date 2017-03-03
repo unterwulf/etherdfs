@@ -118,7 +118,7 @@ int main(void) {
 
   genmsg("msg\\nosrvfnd.c", "No EtherSRV server found on the LAN (not for requested drive at least).\r\n");
 
-  genmsg("msg\\instlled.c", "EtherDFS installed (local MAC ");
+  genmsg("msg\\instlled.c", "EtherDFS v" PVER " installed (local MAC ");
 
   genmsg("msg\\pktdrvat.c", ", pktdrvr at INT ");
 
