@@ -1006,18 +1006,7 @@ static int pktdrv_init(unsigned short pktintparam) {
   unsigned short rseg = 0, roff = 0;
   char far *pktdrvfunc = (char far *)MK_FP(pktdrvfuncseg, pktdrvfuncoffs);
   int i;
-  char sig[8];
-  /* preload sig with "PKT DRVR" -- I could it just as well with
-   * char sig[] = "PKT DRVR", but I want to avoid this landing in
-   * my DATA segment so it doesn't pollute the TSR memory space. */
-  sig[0] = 'P';
-  sig[1] = 'K';
-  sig[2] = 'T';
-  sig[3] = ' ';
-  sig[4] = 'D';
-  sig[5] = 'R';
-  sig[6] = 'V';
-  sig[7] = 'R';
+  char sig[] =  { 'P','K','T',' ','D','R','V','R' }; /* no NUL at the end */
 
   /* set my ethertype to 0xF5ED (EDF5 in network byte order) */
   glob_pktdrv_sndbuff[12] = 0xED;
@@ -1026,7 +1015,8 @@ static int pktdrv_init(unsigned short pktintparam) {
   glob_pktdrv_sndbuff[56] = PROTOVER; /* protocol version */
 
   pktdrvfunc += 3; /* skip three bytes of executable code */
-  for (i = 0; i < 8; i++) if (sig[i] != pktdrvfunc[i]) return(-1);
+  for (i = 0; i < sizeof(sig); i++)
+    if (sig[i] != pktdrvfunc[i]) return(-1);
 
   glob_data.pktint = pktintparam;
 
@@ -1363,7 +1353,19 @@ int main(int argc, char **argv) {
   args.argc = argc;
   args.argv = argv;
   if (parseargv(&args) != 0) {
-    #include "msg/help.c"
+    outmsg("EtherDFS v0.8 / Copyright (C) 2017 Mateusz Viste\r\n"
+           "A network drive for DOS running over raw ethernet\r\n"
+           "\r\n"
+           "Usage: etherdfs SRVMAC rdrive-ldrive [options]\r\n"
+           "       etherdfs /u\r\n"
+           "Options:\r\n"
+           "  /p=XX   use packet driver at interrupt XX (autodetect otherwise)\r\n"
+           "  /q      quiet mode (print nothing if loaded successfully)\r\n"
+           "  /u      unload EtherDFS from memory\r\n"
+           "Use '::' as SRVMAC for server auto-discovery.\r\n"
+           "\r\n"
+           "Examples:  etherdfs 6d:4f:4a:4d:49:52 C-F /q\r\n"
+           "           etherdfs :: D-X /p=6F\r\n$");
     return(1);
   }
 
@@ -1378,7 +1380,7 @@ int main(int argc, char **argv) {
     done:
   }
   if (tmpflag < 5) { /* tmpflag contains DOS version or 0 for 'unknown' */
-    #include "msg\\unsupdos.c"
+    outmsg("Unsupported DOS version! etherdfs requires MS-DOS 5+.\r\n$");
     return(1);
   }
 
@@ -1393,7 +1395,7 @@ int main(int argc, char **argv) {
     goodtogo:
   }
   if (tmpflag != 0) {
-    #include "msg\\noredir.c"
+    outmsg("Redirector installation has been forbidden either by DOS or another process.\r\n$");
     return(1);
   }
 
@@ -1408,7 +1410,7 @@ int main(int argc, char **argv) {
     /* am I loaded at all? */
     etherdfsid = findfreemultiplex(&tmpflag);
     if (tmpflag == 0) { /* not loaded, cannot unload */
-      #include "msg\\notload.c"
+      outmsg("EtherDFS is not loaded, so it cannot be unloaded.\r\n$");
       return(1);
     }
     /* am I still at the top of the int 2Fh chain? */
@@ -1430,7 +1432,7 @@ int main(int argc, char **argv) {
     int2fptr = (unsigned char far *)MK_FP(myseg, myoff) + 23; /* the interrupt handler's signature appears at offset 23 (this might change at each source code modification) */
     /* look for the "MVet" signature */
     if ((int2fptr[0] != 'M') || (int2fptr[1] != 'V') || (int2fptr[2] != 'e') || (int2fptr[3] != 't')) {
-      #include "msg\\othertsr.c";
+      outmsg("EtherDFS cannot be unloaded because another TSR hooked its interrupt handler.\r\n$");
       return(1);
     }
     /* get the ptr to TSR's data */
@@ -1456,7 +1458,7 @@ int main(int argc, char **argv) {
       pop ax
     }
     if (myseg == 0xffffu) {
-      #include "msg\\tsrcomfa.c"
+      outmsg("Communication with the TSR failed.\r\n$");
       return(1);
     }
     tsrdata = MK_FP(myseg, myoff);
@@ -1531,7 +1533,7 @@ int main(int argc, char **argv) {
     /* free TSR's PSP/data/stack seg */
     freeseg(tsrdata->pspseg);
     /* all done */
-    #include "msg\\unloaded.c"
+    outmsg("EtherDFS unloaded successfully.\r\n$");
     return(0);
   }
 
@@ -1551,10 +1553,11 @@ int main(int argc, char **argv) {
   /* is the TSR installed already? */
   glob_multiplexid = findfreemultiplex(&tmpflag);
   if (tmpflag != 0) { /* already loaded */
-    #include "msg\\alrload.c"
+    outmsg("EtherDFS is already installed and cannot be loaded twice.\r\n$");
     return(1);
   } else if (glob_multiplexid == 0) { /* no free multiplex id found */
-    #include "msg\\nomultpx.c"
+    outmsg("Failed to find an available INT 2F multiplex id.\r\n"
+           "You may have loaded too many TSRs already.\r\n$");
     return(1);
   }
 
@@ -1563,11 +1566,14 @@ int main(int argc, char **argv) {
     if (glob_data.ldrv[i] == 0xff) continue;
     cds = getcds(i);
     if (cds == NULL) {
-      #include "msg\\mapfail.c"
+      outmsg("Unable to activate the local drive mapping. You are either using an\r\n"
+             "unsupported operating system, or your LASTDRIVE directive do not permit\r\n"
+             "to define the requested drive letter.\r\n$");
       return(1);
     }
     if (cds->flags != 0) {
-      #include "msg\\drvactiv.c"
+      outmsg("The requested drive letter is already in use. Please choose another\r\n"
+             "drive letter.\r\n$");
       return(1);
     }
   }
@@ -1586,7 +1592,7 @@ int main(int argc, char **argv) {
   }
   /* has it succeeded? */
   if (glob_data.pktint == 0) {
-    #include "msg\\pktdfail.c"
+    outmsg("Packet driver initialization failed.\r\n$");
     return(1);
   }
   pktdrv_getaddr(GLOB_LMAC);
@@ -1600,7 +1606,7 @@ int main(int argc, char **argv) {
     for (i = 0; glob_data.ldrv[i] == 0xff; i++); /* find first mapped disk */
     /* send a discovery frame that will update glob_rmac */
     if (sendquery(AL_DISKSPACE, i, 0, &answer, &ax, 1) != 6) {
-      #include "msg\\nosrvfnd.c"
+      outmsg("No EtherSRV server found on the LAN (not for requested drive at least).\r\n$");
       pktdrv_free(glob_pktdrv_pktcall); /* free the pkt drv and quit */
       return(1);
     }
@@ -1621,14 +1627,14 @@ int main(int argc, char **argv) {
 
   if ((args.flags & ARGFL_QUIET) == 0) {
     char buff[20];
-    #include "msg\\instlled.c"
+    outmsg("EtherDFS installed (local MAC $");
     for (i = 0; i < 6; i++) {
       byte2hex(buff + i + i + i, GLOB_LMAC[i]);
     }
     for (i = 2; i < 16; i += 3) buff[i] = ':';
     buff[17] = '$';
     outmsg(buff);
-    #include "msg\\pktdrvat.c"
+    outmsg(", pktdrvr at INT $");
     byte2hex(buff, glob_data.pktint);
     buff[2] = ')';
     buff[3] = '\r';

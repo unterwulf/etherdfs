@@ -9,14 +9,10 @@ AFLAGS = -0 -ms
 
 all: etherdfs.exe
 
-genmsg.exe: genmsg.c version.h
-	wcl -y -0 -s -d0 -lr -ms -we -wx -os genmsg.c -fe=genmsg.exe
-
 .asm.obj:
 	wasm $(AFLAGS) $< -fo=$@
 
-etherdfs.exe: genmsg.exe etherdfs.c globals.c dgroup.obj chint086.obj tsrend.obj dosstruc.h globals.h version.h
-	genmsg.exe
+etherdfs.exe: etherdfs.c globals.c dgroup.obj chint086.obj tsrend.obj dosstruc.h globals.h version.h
 	*wcl -y -0 -s -lr -ms -we -wx -k1024 -fm=etherdfs.map dgroup.obj chint086.obj globals.c etherdfs.c tsrend.obj -fe=etherdfs.exe @etherdfs.wl
 
 # -y      ignore the WCL env. variable, if any
@@ -34,7 +30,6 @@ etherdfs.exe: genmsg.exe etherdfs.c globals.c dgroup.obj chint086.obj tsrend.obj
 
 clean: .symbolic
 	if exist etherdfs.exe del etherdfs.exe
-	if exist genmsg.exe del genmsg.exe
 	del *.obj
 
 pkg: .symbolic etherdfs.exe

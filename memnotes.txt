@@ -115,31 +115,5 @@ is the size of the PSP. Other compilers might or might not account for that,
 but OpenWatcom definitely does not (not in the small model with EXE output at
 least, I didn't check other combinations).
 
-*** Squeeze out some extra bytes by eliminating literal strings ***
-
-The transient part of your program may use pre-initialized arrays, or pointers
-to strings:
-  char hello[] = "Hello";
-  char *wowsig = "wow";
-
-In both cases, chances are that your compiler will push these strings in the
-DATA segment of the program, hence - again - unnecessarily bloating the memory
-area used by the TSR. For simple cases, it's trivial to change such
-declarations into something like this, to enforce stack usage:
-  char hello[6];
-  hello[0]='H'; hello[1]='e'; hello[2]='l'; hello[3]='l'; hello[4]='o';
-
-But what if the amount of text you wish to output is much larger? It might
-become a real pain to handle very long strings, not mentionning the fact that
-you might want to keep your stack usage at a reasonable level as well.
-
-I am aware of no easy solution for this. But since I was motivated, I ended up
-taking the hard road: embedding the strings as machine code. It sounds scary
-(and it should!), but with proper build automation it can be very manageable.
-I have a separate program called "genmsg" that generates assembly functions
-responsible for printing out each of my strings. Every such 'function' lands
-in a separate C file in the 'msg' subdirectory, so I include the needed file
-whenever I want to output a string on the screen.
-
 
 [EOF]
