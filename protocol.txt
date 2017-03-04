@@ -1,9 +1,10 @@
 
                      *** ETHERDFS (ETHERNET) PROTOCOL ***
+                         (a.k.a. "the EDF5 protocol")
 
 The ethernet communication between the client and the server is very simple:
-for every INT 2F query, the client (etherdfs) sends a single ethernet frame to
-the server, using the following format:
+for every INT 2F query, the client (EtherDFS) sends a single ethernet frame to
+the server (ethersrv), using the following format:
 
 DOEEpppVSDLxxx
 

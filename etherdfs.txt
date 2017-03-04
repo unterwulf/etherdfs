@@ -8,19 +8,25 @@ remote computer (typically Linux-based) to a local drive letter, using raw
 ethernet frames to communicate. For years, I was using LapLink to transfer
 files between my various "retro" computers. It works, yes, but it's also
 annoyingly slow and requires constant attention. One day I thought, "Wouldn't
-it be amazing if all my PCs could share a common network drive, similarly to
-how NFS operates in the *nix world?". This day EtherDFS was born. I clearly
+it be amazing if all my DOS PCs could share a common network drive, similarly
+to how NFS operates in the *nix world?". This day EtherDFS was born. I clearly
 didn't invent anything - the concept has been around almost as long as the
 first IBM PC, and several commercial products addressed that need in the past.
-I am not aware, however, of any free and open-source solution.
+I am not aware, however, of any free and open-source solution. Besides, all
+the commercial solutions I know require to set up a pretty complex network
+environment first, while EtherDFS doesn't need anything more than just a
+packet driver.
 
 EtherDFS is the "client" part, ie. the TSR running on the client DOS computer.
-The solution requires an EtherSRV instance to communicate with. Currently, an
+The client requires an EtherSRV instance to communicate with. Currently, an
 implementation of EtherSRV exists only for Linux (ethersrv-linux).
 
 Since EtherDFS runs over raw ethernet, it doesn't need any TCP/IP stack. It
 only requires a working packet driver. The catch of using raw ethernet frames
-is that EtherDFS is unable to communicate outside of a single LAN.
+is that EtherDFS is, by design, unable to communicate outside of a single LAN.
+In some context this might actually be a strenght, you don't need to worry
+that your EtherDFS transfer will somehow leak outside your LAN - it's simply
+not possible.
 
 Syntax:
   etherdfs SRVMAC rdrv1-ldrv1 [rdrv2-ldrv2] [rdrvX-ldrvX] [options]
@@ -80,7 +86,7 @@ This is the first question I get whenever I introduce EtherDFS to someone:
 I thought about the pros and cons of the multiple technical possibilities, and
 the advantages of using raw Ethernet frames vastly outweighted the
 constraints. It is to be noted that Ethernet is ubiquitious, has been for the
-past 30 years, and is likely to stay here for a while. Here I paste my
+past 30 years, and is likely to stay here for a while. Here below I paste my
 "pros & cons" list, so my reasons should become clear.
 
 Pros:
@@ -91,9 +97,9 @@ Pros:
  - Makes it possible to auto-discover an EtherSRV server on the LAN.
 
 Cons:
- - Unrouteable, meaning cannot work outside of a single LAN (running EtherDFS
-   over a long-distance network would be unadviseable anyway for reliability
-   and latency reasons).
+ - Unrouteable, meaning that it cannot work outside of a single LAN (running
+   EtherDFS over a long-distance network would be unadviseable anyway for
+   reliability and latency reasons).
 
 
 ===[ Is it secure? ]==========================================================

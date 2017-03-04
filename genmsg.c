@@ -67,23 +67,23 @@ int main(void) {
 
   genmsg("msg\\help.c",
     "EtherDFS v" PVER " / Copyright (C) " PDATE " Mateusz Viste\r\n"
-    "A network drive for DOS running over raw ethernet\r\n"
+    "A network drive for DOS, running over raw ethernet\r\n"
     "\r\n"
-    "Usage: etherdfs SRVMAC rdrive-ldrive [options]\r\n"
-    "       etherdfs /u"
+    "Usage: etherdfs SRVMAC rdrv-ldrv [rdrv2-ldrv2 ...] [options]\r\n"
+    "       etherdfs /u\r\n"
     "\r\n"
     "Options:\r\n"
     "  /p=XX   use packet driver at interrupt XX (autodetect otherwise)\r\n"
     "  /q      quiet mode (print nothing if loaded successfully)\r\n"
-    "  /u      unload EtherDFS from memory"
+    "  /u      unload EtherDFS from memory\r\n"
     "\r\n"
     "Use '::' as SRVMAC for server auto-discovery.\r\n"
     "\r\n"
     "Examples:  etherdfs 6d:4f:4a:4d:49:52 C-F /q\r\n"
-    "           etherdfs :: D-X /p=6F\r\n"
+    "           etherdfs :: C-X D-Y E-Z /p=6F\r\n"
     );
 
-  genmsg("msg\\unsupdos.c", "Unsupported DOS version! etherdfs requires MS-DOS 5+.\r\n");
+  genmsg("msg\\unsupdos.c", "Unsupported DOS version! EtherDFS requires MS-DOS 5+.\r\n");
 
   genmsg("msg\\noredir.c", "Redirector installation has been forbidden either by DOS or another process.\r\n");
 
@@ -101,12 +101,12 @@ int main(void) {
 
   genmsg("msg\\mapfail.c",
     "Unable to activate the local drive mapping. You are either using an\r\n"
-    "unsupported operating system, or your LASTDRIVE directive do not permit\r\n"
-    "to define the requested drive letter.\r\n"
+    "unsupported operating system, or your LASTDRIVE directive does not permit\r\n"
+    "to define the requested drive letter (try LASTDRIVE=Z in your CONFIG.SYS).\r\n"
   );
 
   genmsg("msg\\drvactiv.c",
-    "The requested drive letter is already in use. Please choose another\r\n"
+    "The requested local drive letter is already in use. Please choose another\r\n"
     "drive letter.\r\n"
   );
 
