@@ -40,4 +40,4 @@ pkg: .symbolic etherdfs.exe
 	if exist etherdfs.zip del etherdfs.zip
 	zip -9 -k etherdfs.zip etherdfs.exe etherdfs.txt history.txt
 	if exist ethersrc.zip del ethersrc.zip
-	zip -9 -k ethersrc.zip *.h *.c *.txt makefile
+	zip -9 -k ethersrc.zip *.h *.c *.asm *.txt makefile
